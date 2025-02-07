@@ -1,14 +1,13 @@
 use crate::config::consensus::CONSENSUS_THRESHOLD;
-#[cfg(not(feature = "sqlite"))]
-use crate::state::server::InMemoryBlockStore;
-#[cfg(feature = "sqlite")]
+use crate::state::server::BlockStore;
+use crate::state::server::InMemoryConsensus;
 use crate::state::server::SqLiteBlockStore;
 use crate::types::BlockCommitment;
 use crate::types::GenericSignature;
 use crate::{crypto::ecdsa::deserialize_vk, types::Block};
 use crate::{get_current_time, ServerState};
 use colored::Colorize;
-use k256::ecdsa::signature::{SignerMut, Verifier};
+use k256::ecdsa::signature::{Signer, Verifier};
 use k256::ecdsa::Signature;
 use patricia_trie::{
     insert_leaf,
@@ -17,7 +16,9 @@ use patricia_trie::{
 use reqwest::Response;
 
 pub async fn handle_synchronization_response(
-    state_lock: &mut tokio::sync::RwLockWriteGuard<'_, ServerState>,
+    shared_state_lock: &mut tokio::sync::MutexGuard<'_, ServerState>,
+    block_state_lock: &mut tokio::sync::MutexGuard<'_, BlockStore>,
+    consensus_state_lock: &mut tokio::sync::MutexGuard<'_, InMemoryConsensus>,
     response: Response,
     next_height: u32,
 ) {
@@ -25,16 +26,9 @@ pub async fn handle_synchronization_response(
     let block_serialized = response.text().await.unwrap();
     if block_serialized != "[Warning] Requested Block that does not exist" {
         let block: Block = serde_json::from_str(&block_serialized).unwrap();
-        #[cfg(not(feature = "sqlite"))]
-        state_lock
-            .block_state
-            .insert_block(next_height, block.clone());
-        #[cfg(feature = "sqlite")]
-        state_lock
-            .block_state
-            .insert_block(next_height, block.clone());
+        block_state_lock.insert_block(next_height, block.clone());
         // insert transactions into the trie
-        let mut root_node = Node::Root(state_lock.merkle_trie_root.clone());
+        let mut root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
         let transactions = &block.transactions;
         for transaction in transactions {
             let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
@@ -47,12 +41,16 @@ pub async fn handle_synchronization_response(
                 .flat_map(|&byte| (0..8).rev().map(move |i| (byte >> i) & 1))
                 .collect();
             leaf.hash();
-            let new_root = insert_leaf(&mut state_lock.merkle_trie_state, &mut leaf, root_node);
+            let new_root = insert_leaf(
+                &mut shared_state_lock.merkle_trie_state,
+                &mut leaf,
+                root_node,
+            );
             root_node = Node::Root(new_root);
         }
         // update trie root
-        state_lock.merkle_trie_root = root_node.unwrap_as_root();
-        state_lock.consensus_state.reinitialize();
+        shared_state_lock.merkle_trie_root = root_node.unwrap_as_root();
+        consensus_state_lock.reinitialize();
         println!(
             "{}",
             format_args!("{} Synchronized Block: {}", "[Info]".green(), next_height)
@@ -62,20 +60,22 @@ pub async fn handle_synchronization_response(
             format_args!(
                 "{} New Trie Root: {:?}",
                 "[Info]".green(),
-                state_lock.merkle_trie_root.hash
+                shared_state_lock.merkle_trie_root.hash
             )
         );
     }
 }
 pub async fn handle_block_proposal(
-    state_lock: &mut tokio::sync::RwLockWriteGuard<'_, ServerState>,
+    shared_state_lock: &mut tokio::sync::MutexGuard<'_, ServerState>,
+    block_state_lock: &mut tokio::sync::MutexGuard<'_, BlockStore>,
+    consensus_state_lock: &mut tokio::sync::MutexGuard<'_, InMemoryConsensus>,
     proposal: &mut Block,
     error_response: String,
 ) -> Option<String> {
-    let early_revert: bool = match &state_lock.consensus_state.lowest_block {
+    let early_revert: bool = match &consensus_state_lock.lowest_block {
         Some(v) => {
             if proposal.to_bytes() < v.clone() {
-                state_lock.consensus_state.lowest_block = Some(proposal.to_bytes());
+                consensus_state_lock.lowest_block = Some(proposal.to_bytes());
                 false
             } else if proposal.to_bytes() == v.clone() {
                 false
@@ -84,7 +84,7 @@ pub async fn handle_block_proposal(
             }
         }
         None => {
-            state_lock.consensus_state.lowest_block = Some(proposal.to_bytes());
+            consensus_state_lock.lowest_block = Some(proposal.to_bytes());
             false
         }
     };
@@ -97,11 +97,7 @@ pub async fn handle_block_proposal(
     let mut commitment_count: u32 = 0;
     for commitment in block_commitments {
         let commitment_vk = deserialize_vk(&commitment.validator);
-        if state_lock
-            .consensus_state
-            .validators
-            .contains(&commitment_vk)
-        {
+        if consensus_state_lock.validators.contains(&commitment_vk) {
             match commitment_vk.verify(
                 &proposal.to_bytes(),
                 &Signature::from_slice(&commitment.signature).unwrap(),
@@ -118,8 +114,7 @@ pub async fn handle_block_proposal(
             println!("[Err] Invalid Proposal found with invalid VK")
         }
         if commitment.validator
-            == state_lock
-                .consensus_state
+            == consensus_state_lock
                 .local_validator
                 .to_sec1_bytes()
                 .to_vec()
@@ -131,10 +126,7 @@ pub async fn handle_block_proposal(
         "[Info] Commitment count for proposal: {}",
         &commitment_count
     );
-    #[cfg(not(feature = "sqlite"))]
-    let previous_block_height = state_lock.block_state.height - 1;
-    #[cfg(feature = "sqlite")]
-    let previous_block_height = state_lock.block_state.current_block_height() - 1;
+    let previous_block_height = block_state_lock.current_block_height() - 1;
     if proposal.height != previous_block_height + 1 {
         return Some(error_response);
     }
@@ -143,16 +135,9 @@ pub async fn handle_block_proposal(
             "{}",
             format_args!("{} Received Valid Block", "[Info]".green())
         );
-        #[cfg(not(feature = "sqlite"))]
-        state_lock
-            .block_state
-            .insert_block(proposal.height - 1, proposal.clone());
-        #[cfg(feature = "sqlite")]
-        state_lock
-            .block_state
-            .insert_block(proposal.height, proposal.clone());
+        block_state_lock.insert_block(proposal.height, proposal.clone());
         // insert transactions into the trie
-        let root_node = Node::Root(state_lock.merkle_trie_root.clone());
+        let root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
         for transaction in &proposal.transactions {
             let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
             leaf.hash();
@@ -166,11 +151,15 @@ pub async fn handle_block_proposal(
             leaf.hash();
             todo!("check if leaf exists and insert otherwise");
             // currently duplicate insertion will cause an error
-            let new_root = insert_leaf(&mut state_lock.merkle_trie_state, &mut leaf, root_node);
+            let new_root = insert_leaf(
+                &mut shared_state_lock.merkle_trie_state,
+                &mut leaf,
+                root_node,
+            );
             root_node = Node::Root(new_root);
         }
         // update in-memory trie root
-        state_lock.merkle_trie_root = root_node.unwrap_as_root();
+        shared_state_lock.merkle_trie_root = root_node.unwrap_as_root();
         println!(
             "{}",
             format_args!("{} Block was stored: {}", "[Info]".green(), proposal.height)
@@ -180,24 +169,18 @@ pub async fn handle_block_proposal(
             format_args!(
                 "{} New Trie Root: {:?}",
                 "[Info]".green(),
-                state_lock.merkle_trie_root.hash
+                shared_state_lock.merkle_trie_root.hash
             )
         );
-        //state_lock.consensus_state.reinitialize();
-    } else if !is_signed
-        // && !state_lock.consensus_state.signed
-        // only signing proposals for the current height
-        && (previous_block_height + 1 == proposal.height)
-    {
-        let mut local_sk = state_lock.consensus_state.local_signing_key.clone();
+    } else if !is_signed && (previous_block_height + 1 == proposal.height) {
+        let local_sk = consensus_state_lock.local_signing_key.clone();
         let block_bytes = proposal.to_bytes();
         let signature: Signature = local_sk.sign(&block_bytes);
         let signature_serialized: GenericSignature = signature.to_bytes().to_vec();
         let unix_timestamp = get_current_time();
         let commitment = BlockCommitment {
             signature: signature_serialized,
-            validator: state_lock
-                .consensus_state
+            validator: consensus_state_lock
                 .local_validator
                 .to_sec1_bytes()
                 .to_vec()
@@ -209,12 +192,11 @@ pub async fn handle_block_proposal(
             None => proposal.commitments = Some(vec![commitment]),
         }
         println!("[Info] Signed Block is being gossipped");
-        let last_block_unix_timestamp = state_lock
-            .block_state
+        let last_block_unix_timestamp = block_state_lock
             .get_block_by_height(previous_block_height)
             .timestamp;
 
-        let _ = state_lock
+        let _ = shared_state_lock
             .local_gossipper
             .gossip_pending_block(proposal.clone(), last_block_unix_timestamp)
             .await;

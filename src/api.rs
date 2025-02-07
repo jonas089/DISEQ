@@ -1,76 +1,71 @@
-#[cfg(not(feature = "sqlite"))]
-use crate::state::server::{InMemoryBlockStore, InMemoryTransactionPool};
-#[cfg(feature = "sqlite")]
 use crate::state::server::{SqLiteBlockStore, SqLiteTransactionPool};
 use crate::{
     consensus::logic::{current_round, evaluate_commitment, get_committing_validator},
     crypto::ecdsa::deserialize_vk,
     handlers::handle_block_proposal,
+    state::server::{BlockStore, InMemoryConsensus, TransactionPool},
     types::{Block, ConsensusCommitment, Transaction},
     ServerState,
 };
 use axum::{extract::Path, Extension, Json};
 use colored::Colorize;
-use k256::ecdsa::{signature::Verifier, Signature};
+use k256::ecdsa::signature::Verifier;
+use k256::ecdsa::Signature;
 use l2_sequencer::config::consensus::ROUND_DURATION;
 use patricia_trie::store::types::Node;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 pub async fn schedule(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(shared_pool_state): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(transaction): Json<Transaction>,
 ) -> String {
-    let mut state = shared_state.write().await;
+    let mut shared_pool_lock = shared_pool_state.lock().await;
     let success_response =
         format!("[Ok] Transaction is being sequenced: {:?}", &transaction).to_string();
-    state.pool_state.insert_transaction(transaction);
+    shared_pool_lock.insert_transaction(transaction);
     success_response
 }
 pub async fn commit(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(commitment): Json<ConsensusCommitment>,
 ) -> String {
-    let mut state_lock = shared_state.write().await;
+    let block_state_lock = shared_block_state.lock().await;
+    let mut consensus_state_lock = shared_consensus_state.lock().await;
     let success_response = format!("[Ok] Commitment was accepted: {:?}", &commitment).to_string();
-    #[cfg(not(feature = "sqlite"))]
-    let last_block_unix_timestamp = state_lock
-        .block_state
-        .get_block_by_height(state_lock.block_state.height - 1)
+    let last_block_unix_timestamp = block_state_lock
+        .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
-    #[cfg(feature = "sqlite")]
-    let last_block_unix_timestamp = state_lock
-        .block_state
-        .get_block_by_height(state_lock.block_state.current_block_height() - 1)
-        .timestamp;
-    if !state_lock.consensus_state.round_winner.is_some() {
+    if !consensus_state_lock.round_winner.is_some() {
         // no round winner found, commitment might be valid
         let validator = get_committing_validator(
             last_block_unix_timestamp,
-            state_lock.consensus_state.validators.clone(),
+            consensus_state_lock.validators.clone(),
         );
         // todo: check if commitment signature is valid for validator
         if deserialize_vk(&commitment.validator) == validator {
-            let winner =
-                evaluate_commitment(commitment, state_lock.consensus_state.validators.clone());
-            state_lock.consensus_state.round_winner = Some(winner);
+            let winner = evaluate_commitment(commitment, consensus_state_lock.validators.clone());
+            consensus_state_lock.round_winner = Some(winner);
         }
     }
     success_response
 }
 pub async fn propose(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
-    let mut state_lock = shared_state.write().await;
-    #[cfg(not(feature = "sqlite"))]
-    let last_block_unix_timestamp = state_lock
-        .block_state
-        .get_block_by_height(state_lock.block_state.height - 1)
-        .timestamp;
-    #[cfg(feature = "sqlite")]
-    let last_block_unix_timestamp = state_lock
-        .block_state
-        .get_block_by_height(state_lock.block_state.current_block_height() - 1)
+    let block_state_lock = shared_block_state.lock().await;
+    let mut consensus_state_lock = shared_consensus_state.lock().await;
+    let last_block_unix_timestamp = block_state_lock
+        .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
     let error_response = format!("Block was rejected: {:?}", &proposal).to_string();
     let round = current_round(last_block_unix_timestamp);
@@ -85,12 +80,18 @@ pub async fn propose(
         .signature
         .clone()
         .expect("Block has not been signed!");
-    if let Some(round_winner) = state_lock.consensus_state.round_winner {
+    if let Some(round_winner) = consensus_state_lock.round_winner {
         let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
         match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
             Ok(_) => {
-                let res =
-                    handle_block_proposal(&mut state_lock, &mut proposal, error_response).await;
+                let res = handle_block_proposal(
+                    &mut shared_state.lock().await,
+                    &mut shared_block_state.lock().await,
+                    &mut consensus_state_lock,
+                    &mut proposal,
+                    error_response,
+                )
+                .await;
                 match res {
                     Some(e) => return e,
                     None => {}
@@ -113,10 +114,13 @@ pub async fn propose(
     }
 }
 pub async fn merkle_proof(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(key): Json<Vec<u8>>,
 ) -> String {
-    let mut state_lock = shared_state.write().await;
+    let mut state_lock = shared_state.lock().await;
     let trie_root = state_lock.merkle_trie_root.clone();
     let merkle_proof = patricia_trie::merkle::merkle_proof(
         &mut state_lock.merkle_trie_state,
@@ -128,59 +132,67 @@ pub async fn merkle_proof(
         None => "[Err] Failed to generate Merkle Proof for Transaction".to_string(),
     }
 }
-pub async fn get_pool(Extension(shared_state): Extension<Arc<RwLock<ServerState>>>) -> String {
-    let state = shared_state.read().await;
-    #[cfg(not(feature = "sqlite"))]
+pub async fn get_pool(
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(pool_state): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
+) -> String {
+    let pool_state_lock = pool_state.lock().await;
     {
-        format!("{:?}", state.pool_state.transactions)
-    }
-    #[cfg(feature = "sqlite")]
-    {
-        format!("{:?}", state.pool_state.get_all_transactions())
+        format!("{:?}", pool_state_lock.get_all_transactions())
     }
 }
 pub async fn get_commitments(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
-    let state_lock = shared_state.read().await;
-    format!("{:?}", state_lock.consensus_state.commitments)
+    let consensus_state_lock = consensus_state.lock().await;
+    format!("{:?}", consensus_state_lock.commitments)
 }
 pub async fn get_block(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Path(height): Path<u32>,
 ) -> String {
-    let state_lock = shared_state.read().await;
+    let block_state_lock = shared_block_state.lock().await;
     println!(
         "{}",
         format_args!("{} Peer Requested Block #{}", "[Info]".green(), height)
     );
-    #[cfg(not(feature = "sqlite"))]
-    let previous_block_height = state_lock.block_state.height - 1;
-    #[cfg(feature = "sqlite")]
-    let previous_block_height = state_lock.block_state.current_block_height();
+    let previous_block_height = block_state_lock.current_block_height();
     if previous_block_height < height + 1 {
         "[Warning] Requested Block that does not exist".to_string()
     } else {
-        match serde_json::to_string(&state_lock.block_state.get_block_by_height(height)) {
+        match serde_json::to_string(&block_state_lock.get_block_by_height(height)) {
             Ok(block_json) => block_json,
             Err(e) => e.to_string(),
         }
     }
 }
 pub async fn get_state_root_hash(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
-    let state_lock = shared_state.read().await;
-    match serde_json::to_string(&state_lock.merkle_trie_root) {
+    let shared_state_lock = shared_state.lock().await;
+    match serde_json::to_string(&shared_state_lock.merkle_trie_root) {
         Ok(trie_root_json) => trie_root_json,
         Err(e) => e.to_string(),
     }
 }
-pub async fn get_height(Extension(shared_state): Extension<Arc<RwLock<ServerState>>>) -> String {
-    let state_lock = shared_state.read().await;
-    #[cfg(not(feature = "sqlite"))]
-    let previous_block_height = state_lock.block_state.height - 1;
-    #[cfg(feature = "sqlite")]
-    let previous_block_height = state_lock.block_state.current_block_height();
+pub async fn get_height(
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
+) -> String {
+    let block_state_lock = shared_block_state.lock().await;
+    let previous_block_height = block_state_lock.current_block_height();
     serde_json::to_string(&previous_block_height).unwrap()
 }

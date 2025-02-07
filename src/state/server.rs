@@ -6,10 +6,7 @@ use crate::{
     types::{Block, ConsensusCommitment, Timestamp, Transaction},
 };
 use k256::ecdsa::{SigningKey, VerifyingKey};
-#[cfg(feature = "sqlite")]
 use rusqlite::{params, Connection};
-#[cfg(not(feature = "sqlite"))]
-use std::collections::HashMap;
 use std::env;
 
 pub trait InMemoryBlockStore {
@@ -18,7 +15,6 @@ pub trait InMemoryBlockStore {
     fn insert_block(&mut self, previous_height: u32, block: Block);
     fn get_block_by_height(&self, height: u32) -> Block;
 }
-#[cfg(feature = "sqlite")]
 pub trait SqLiteBlockStore {
     fn setup(&self);
     fn trigger_genesis(&mut self, timestamp: Timestamp);
@@ -26,16 +22,9 @@ pub trait SqLiteBlockStore {
     fn get_block_by_height(&self, height: u32) -> Block;
     fn current_block_height(&self) -> u32;
 }
-#[cfg(feature = "sqlite")]
 pub struct BlockStore {
     pub db_path: String,
 }
-#[cfg(not(feature = "sqlite"))]
-pub struct BlockStore {
-    pub height: u32,
-    pub blocks: HashMap<u32, Block>,
-}
-#[cfg(feature = "sqlite")]
 impl SqLiteBlockStore for BlockStore {
     fn setup(&self) {
         let conn = Connection::open(&self.db_path).unwrap();
@@ -93,48 +82,8 @@ impl SqLiteBlockStore for BlockStore {
         )
     }
 }
-#[cfg(not(feature = "sqlite"))]
-impl InMemoryBlockStore for BlockStore {
-    fn empty() -> Self {
-        Self {
-            height: 1,
-            blocks: HashMap::new(),
-        }
-    }
-    fn trigger_genesis(&mut self, timestamp: Timestamp) {
-        self.blocks.insert(
-            0u32,
-            Block {
-                timestamp,
-                height: 0,
-                signature: Some(vec![]),
-                transactions: vec![],
-                commitments: None,
-            },
-        );
-    }
-    fn insert_block(&mut self, previous_height: u32, block: Block) {
-        self.blocks.insert(previous_height + 1, block);
-        self.height = self.blocks.len() as u32;
-    }
-    fn get_block_by_height(&self, height: u32) -> Block {
-        self.blocks
-            .get(&height)
-            .expect("Failed to get Block")
-            .clone()
-    }
-}
-#[cfg(not(feature = "sqlite"))]
-pub trait InMemoryTransactionPool {
-    fn empty() -> Self;
-    fn insert_transaction(&mut self, transaction: Transaction);
-    #[allow(unused)]
-    fn get_transaction_by_index(&self, index: u32) -> &Transaction;
-    fn reinitialize(&mut self);
-}
 
 // note: can be used for other dbs and should therefore be renamed
-#[cfg(feature = "sqlite")]
 pub trait SqLiteTransactionPool {
     fn setup(&self);
     fn insert_transaction(&mut self, transaction: Transaction);
@@ -142,17 +91,10 @@ pub trait SqLiteTransactionPool {
     fn get_all_transactions(&self) -> Vec<Transaction>;
     fn reinitialize(&mut self);
 }
-#[cfg(not(feature = "sqlite"))]
-pub struct TransactionPool {
-    pub size: u32,
-    pub transactions: HashMap<u32, Transaction>,
-}
-#[cfg(feature = "sqlite")]
 pub struct TransactionPool {
     pub size: u32,
     pub db_path: String,
 }
-#[cfg(feature = "sqlite")]
 impl SqLiteTransactionPool for TransactionPool {
     fn setup(&self) {
         let conn = Connection::open(&self.db_path).unwrap();
@@ -216,28 +158,6 @@ impl SqLiteTransactionPool for TransactionPool {
     }
 }
 
-#[cfg(not(feature = "sqlite"))]
-impl InMemoryTransactionPool for TransactionPool {
-    fn empty() -> Self {
-        Self {
-            size: 0,
-            transactions: HashMap::new(),
-        }
-    }
-    fn insert_transaction(&mut self, transaction: Transaction) {
-        self.transactions.insert(self.size, transaction);
-        self.size += 1;
-    }
-    fn get_transaction_by_index(&self, index: u32) -> &Transaction {
-        self.transactions
-            .get(&index)
-            .expect("Failed to get Transaction")
-    }
-    fn reinitialize(&mut self) {
-        self.size = 0;
-        self.transactions = HashMap::new();
-    }
-}
 pub struct InMemoryConsensus {
     pub validators: Vec<VerifyingKey>,
     pub local_validator: VerifyingKey,

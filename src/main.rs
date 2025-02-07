@@ -30,7 +30,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use types::{Block, ConsensusCommitment};
 #[allow(unused)]
 use {
@@ -38,22 +38,12 @@ use {
     handlers::handle_synchronization_response,
     reqwest::Response,
 };
-#[cfg(feature = "sqlite")]
 use {
     patricia_trie::store::{db::sql::TrieDB as MerkleTrieDB, types::Root},
     state::server::{SqLiteBlockStore, SqLiteTransactionPool},
 };
-#[cfg(not(feature = "sqlite"))]
-use {
-    patricia_trie::store::{db::TrieDB as MerkleTrieDB, types::Root},
-    state::server::{InMemoryBlockStore, InMemoryTransactionPool},
-    std::collections::HashMap,
-};
 
 struct ServerState {
-    block_state: BlockStore,
-    pool_state: TransactionPool,
-    consensus_state: InMemoryConsensus,
     merkle_trie_state: MerkleTrieDB,
     merkle_trie_root: Root,
     local_gossipper: Gossipper,
@@ -61,13 +51,10 @@ struct ServerState {
 
 // currently only supports mock net
 #[allow(unused)]
-async fn synchronization_loop(database: Arc<RwLock<ServerState>>) {
+async fn synchronization_loop(database: Arc<Mutex<ServerState>>) {
     #[cfg(feature = "mock-net")]
     {
         let mut state_lock = database.write().await;
-        #[cfg(not(feature = "sqlite"))]
-        let next_height = state_lock.block_state.height - 1;
-        #[cfg(feature = "sqlite")]
         let next_height = state_lock.block_state.current_block_height();
         let gossipper = Gossipper {
             peers: PEERS.to_vec(),
@@ -102,18 +89,19 @@ async fn synchronization_loop(database: Arc<RwLock<ServerState>>) {
         todo!("Implement mainnet synchronization!");
     }
 }
-async fn consensus_loop(state: Arc<RwLock<ServerState>>) {
+async fn consensus_loop(
+    shared_state: Arc<Mutex<ServerState>>,
+    shared_block_state: Arc<Mutex<BlockStore>>,
+    shared_pool_state: Arc<Mutex<TransactionPool>>,
+    shared_consensus_state: Arc<Mutex<InMemoryConsensus>>,
+) {
     let unix_timestamp = get_current_time();
-    let mut state_lock = state.write().await;
-    #[cfg(not(feature = "sqlite"))]
-    let last_block_unix_timestamp = state_lock
-        .block_state
-        .get_block_by_height(state_lock.block_state.height - 1)
-        .timestamp;
-    #[cfg(feature = "sqlite")]
-    let last_block_unix_timestamp = state_lock
-        .block_state
-        .get_block_by_height(state_lock.block_state.current_block_height() - 1)
+    let shared_state_lock = shared_state.lock().await;
+    let shared_block_lock = shared_block_state.lock().await;
+    let mut shared_pool_lock = shared_pool_state.lock().await;
+    let mut shared_consensus_lock = shared_consensus_state.lock().await;
+    let last_block_unix_timestamp = shared_block_lock
+        .get_block_by_height(shared_block_lock.current_block_height() - 1)
         .timestamp;
     // check if clearing phase of new consensus round
     if unix_timestamp
@@ -121,64 +109,51 @@ async fn consensus_loop(state: Arc<RwLock<ServerState>>) {
             + ((((unix_timestamp - last_block_unix_timestamp) / (ROUND_DURATION)) * ROUND_DURATION)
                 + CLEARING_PHASE_DURATION)
     {
-        state_lock.consensus_state.reinitialize();
+        shared_consensus_lock.reinitialize();
         return;
     }
     let committing_validator = get_committing_validator(
         last_block_unix_timestamp,
-        state_lock.consensus_state.validators.clone(),
+        shared_consensus_lock.validators.clone(),
     );
     println!(
         "[Info] Current round: {}",
         current_round(last_block_unix_timestamp)
     );
-    #[cfg(not(feature = "sqlite"))]
-    let previous_block_height = state_lock.block_state.height - 1;
-    #[cfg(feature = "sqlite")]
-    let previous_block_height = state_lock.block_state.current_block_height() - 1;
-    if state_lock.consensus_state.local_validator == committing_validator
-        && !state_lock.consensus_state.committed
+    let previous_block_height = shared_block_lock.current_block_height() - 1;
+    if shared_consensus_lock.local_validator == committing_validator
+        && !shared_consensus_lock.committed
     {
         let random_zk_number = generate_random_number(
-            state_lock
-                .consensus_state
+            shared_consensus_lock
                 .local_validator
                 .to_sec1_bytes()
                 .to_vec(),
             (previous_block_height + 1).to_be_bytes().to_vec(),
         );
         let commitment = ConsensusCommitment {
-            validator: state_lock
-                .consensus_state
+            validator: shared_consensus_lock
                 .local_validator
                 .to_sec1_bytes()
                 .to_vec(),
             receipt: random_zk_number,
         };
-        let _ = state_lock
+        let _ = shared_state_lock
             .local_gossipper
             .gossip_consensus_commitment(commitment.clone())
             .await;
         let proposing_validator =
-            evaluate_commitment(commitment, state_lock.consensus_state.validators.clone());
-        state_lock.consensus_state.round_winner = Some(proposing_validator);
-        state_lock.consensus_state.committed = true;
+            evaluate_commitment(commitment, shared_consensus_lock.validators.clone());
+        shared_consensus_lock.round_winner = Some(proposing_validator);
+        shared_consensus_lock.committed = true;
     }
-    if state_lock.consensus_state.round_winner.is_none() {
+    if shared_consensus_lock.round_winner.is_none() {
         return;
     }
-    let proposing_validator = state_lock.consensus_state.round_winner.unwrap();
-    #[cfg(not(feature = "sqlite"))]
-    let transactions = state_lock
-        .pool_state
-        .transactions
-        .values()
-        .cloned()
-        .collect();
-    #[cfg(feature = "sqlite")]
-    let transactions = state_lock.pool_state.get_all_transactions();
-    if state_lock.consensus_state.local_validator == proposing_validator
-        && !state_lock.consensus_state.proposed
+    let proposing_validator = shared_consensus_lock.round_winner.unwrap();
+    let transactions = shared_pool_lock.get_all_transactions();
+    if shared_consensus_lock.local_validator == proposing_validator
+        && !shared_consensus_lock.proposed
     {
         let mut proposed_block = Block {
             height: previous_block_height + 1,
@@ -187,19 +162,19 @@ async fn consensus_loop(state: Arc<RwLock<ServerState>>) {
             commitments: None,
             timestamp: unix_timestamp,
         };
-        let mut signing_key = state_lock.consensus_state.local_signing_key.clone();
+        let mut signing_key = shared_consensus_lock.local_signing_key.clone();
         let signature: Signature = signing_key.sign(&proposed_block.to_bytes());
         proposed_block.signature = Some(signature.to_bytes().to_vec());
         println!(
             "{}",
             format_args!("{} Gossipping proposed Block", "[Info]".green())
         );
-        let _ = state_lock
+        let _ = shared_state_lock
             .local_gossipper
             .gossip_pending_block(proposed_block, last_block_unix_timestamp)
             .await;
-        state_lock.consensus_state.proposed = true;
-        state_lock.pool_state.reinitialize()
+        shared_consensus_lock.proposed = true;
+        shared_pool_lock.reinitialize()
     }
 }
 #[tokio::main]
@@ -220,7 +195,6 @@ async fn main() {
             .italic()
             .magenta()
     );
-    #[cfg(feature = "sqlite")]
     let mut block_state = {
         let block_state: BlockStore = BlockStore {
             db_path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
@@ -228,15 +202,7 @@ async fn main() {
         block_state.setup();
         block_state
     };
-    #[cfg(not(feature = "sqlite"))]
-    let mut block_state = {
-        let block_state: BlockStore = BlockStore::empty();
-        block_state
-    };
     block_state.trigger_genesis(get_current_time());
-    #[cfg(not(feature = "sqlite"))]
-    let pool_state: TransactionPool = TransactionPool::empty();
-    #[cfg(feature = "sqlite")]
     let pool_state: TransactionPool = {
         let pool_state: TransactionPool = TransactionPool {
             size: 0,
@@ -246,30 +212,27 @@ async fn main() {
         pool_state
     };
     let consensus_state: InMemoryConsensus = InMemoryConsensus::empty_with_default_validators();
-    #[cfg(not(feature = "sqlite"))]
-    let merkle_trie_state: MerkleTrieDB = MerkleTrieDB {
-        nodes: HashMap::new(),
-    };
-    #[cfg(feature = "sqlite")]
     let merkle_trie_state: MerkleTrieDB = MerkleTrieDB {
         path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
         cache: None,
     };
-    #[cfg(feature = "sqlite")]
     merkle_trie_state.setup();
     let merkle_trie_root: Root = Root::empty();
     let local_gossipper: Gossipper = Gossipper {
         peers: PEERS.to_vec(),
         client: Client::new(),
     };
-    let shared_state: Arc<RwLock<ServerState>> = Arc::new(RwLock::new(ServerState {
-        block_state,
-        pool_state,
-        consensus_state,
+    let shared_state: Arc<Mutex<ServerState>> = Arc::new(Mutex::new(ServerState {
         merkle_trie_state,
         merkle_trie_root,
         local_gossipper,
     }));
+
+    let shared_block_state: Arc<Mutex<BlockStore>> = Arc::new(Mutex::new(block_state));
+    let shared_pool_state: Arc<Mutex<TransactionPool>> = Arc::new(Mutex::new(pool_state));
+    let shared_consensus_state: Arc<Mutex<InMemoryConsensus>> =
+        Arc::new(Mutex::new(consensus_state));
+
     let host_with_port = env::var("API_HOST_WITH_PORT").unwrap_or("0.0.0.0:8080".to_string());
     let formatted_msg = format!(
         "{}{}",
@@ -290,14 +253,27 @@ async fn main() {
     });
     let consensus_task = tokio::spawn({
         let shared_state = Arc::clone(&shared_state);
+        let shared_block_state = Arc::clone(&shared_block_state);
+        let shared_pool_state = Arc::clone(&shared_pool_state);
+        let shared_consensus_state = Arc::clone(&shared_consensus_state);
         async move {
             loop {
-                consensus_loop(Arc::clone(&shared_state)).await;
+                consensus_loop(
+                    Arc::clone(&shared_state),
+                    Arc::clone(&shared_block_state),
+                    Arc::clone(&shared_pool_state),
+                    Arc::clone(&shared_consensus_state),
+                )
+                .await;
                 tokio::time::sleep(Duration::from_secs(10)).await;
             }
         }
     });
     let api_task = tokio::spawn({
+        let shared_state = Arc::clone(&shared_state);
+        let shared_block_state = Arc::clone(&shared_block_state);
+        let shared_pool_state = Arc::clone(&shared_pool_state);
+        let shared_consensus_state = Arc::clone(&shared_consensus_state);
         async move {
             let api = Router::new()
                 .route("/get/pool", get(get_pool))
@@ -310,7 +286,10 @@ async fn main() {
                 .route("/propose", post(propose))
                 .route("/merkle_proof", post(merkle_proof))
                 .layer(DefaultBodyLimit::max(10000000))
-                .layer(Extension(shared_state));
+                .layer(Extension(shared_state))
+                .layer(Extension(shared_block_state))
+                .layer(Extension(shared_pool_state))
+                .layer(Extension(shared_consensus_state));
 
             let listener = tokio::net::TcpListener::bind(&host_with_port)
                 .await
