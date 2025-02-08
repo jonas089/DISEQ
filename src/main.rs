@@ -30,7 +30,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use types::{Block, ConsensusCommitment};
 #[allow(unused)]
 use {
@@ -51,7 +51,7 @@ struct ServerState {
 
 // currently only supports mock net
 #[allow(unused)]
-async fn synchronization_loop(database: Arc<Mutex<ServerState>>) {
+async fn synchronization_loop(database: Arc<RwLock<ServerState>>) {
     #[cfg(feature = "mock-net")]
     {
         let mut state_lock = database.write().await;
@@ -90,16 +90,16 @@ async fn synchronization_loop(database: Arc<Mutex<ServerState>>) {
     }
 }
 async fn consensus_loop(
-    shared_state: Arc<Mutex<ServerState>>,
-    shared_block_state: Arc<Mutex<BlockStore>>,
+    shared_state: Arc<RwLock<ServerState>>,
+    shared_block_state: Arc<RwLock<BlockStore>>,
     shared_pool_state: Arc<Mutex<TransactionPool>>,
-    shared_consensus_state: Arc<Mutex<InMemoryConsensus>>,
+    shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
 ) {
     let unix_timestamp = get_current_time();
-    let shared_state_lock = shared_state.lock().await;
-    let shared_block_lock = shared_block_state.lock().await;
+    let shared_state_lock = shared_state.read().await;
+    let shared_block_lock = shared_block_state.read().await;
     let mut shared_pool_lock = shared_pool_state.lock().await;
-    let mut shared_consensus_lock = shared_consensus_state.lock().await;
+    let mut shared_consensus_lock = shared_consensus_state.write().await;
     let last_block_unix_timestamp = shared_block_lock
         .get_block_by_height(shared_block_lock.current_block_height() - 1)
         .timestamp;
@@ -222,16 +222,16 @@ async fn main() {
         peers: PEERS.to_vec(),
         client: Client::new(),
     };
-    let shared_state: Arc<Mutex<ServerState>> = Arc::new(Mutex::new(ServerState {
+    let shared_state: Arc<RwLock<ServerState>> = Arc::new(RwLock::new(ServerState {
         merkle_trie_state,
         merkle_trie_root,
         local_gossipper,
     }));
 
-    let shared_block_state: Arc<Mutex<BlockStore>> = Arc::new(Mutex::new(block_state));
+    let shared_block_state: Arc<RwLock<BlockStore>> = Arc::new(RwLock::new(block_state));
     let shared_pool_state: Arc<Mutex<TransactionPool>> = Arc::new(Mutex::new(pool_state));
-    let shared_consensus_state: Arc<Mutex<InMemoryConsensus>> =
-        Arc::new(Mutex::new(consensus_state));
+    let shared_consensus_state: Arc<RwLock<InMemoryConsensus>> =
+        Arc::new(RwLock::new(consensus_state));
 
     let host_with_port = env::var("API_HOST_WITH_PORT").unwrap_or("0.0.0.0:8080".to_string());
     let formatted_msg = format!(
