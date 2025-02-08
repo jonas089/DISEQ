@@ -51,15 +51,23 @@ struct ServerState {
 
 // currently only supports mock net
 #[allow(unused)]
-async fn synchronization_loop(database: Arc<RwLock<ServerState>>) {
-    #[cfg(feature = "mock-net")]
+async fn synchronization_loop(
+    shared_state: Arc<RwLock<ServerState>>,
+    shared_block_state: Arc<RwLock<BlockStore>>,
+    shared_pool_state: Arc<Mutex<TransactionPool>>,
+    shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
+) {
     {
-        let mut state_lock = database.write().await;
-        let next_height = state_lock.block_state.current_block_height();
+        let mut shared_state_lock = shared_state.write().await;
+        let mut block_state_lock = shared_block_state.write().await;
+        let mut pool_state_lock = shared_pool_state.lock().await;
+        let mut consensus_state_lock = shared_consensus_state.write().await;
+        let next_height = block_state_lock.current_block_height();
         let gossipper = Gossipper {
             peers: PEERS.to_vec(),
             client: Client::new(),
         };
+        #[cfg(feature = "local-net")]
         for peer in gossipper.peers {
             // todo: make this generic for n amount of nodes
             let this_node = env::var("API_HOST_WITH_PORT").unwrap_or("0.0.0.0:8080".to_string());
@@ -78,7 +86,14 @@ async fn synchronization_loop(database: Arc<RwLock<ServerState>>) {
             };
             match response {
                 Some(response) => {
-                    handle_synchronization_response(&mut state_lock, response, next_height).await;
+                    handle_synchronization_response(
+                        &mut shared_state_lock,
+                        &mut block_state_lock,
+                        &mut consensus_state_lock,
+                        response,
+                        next_height,
+                    )
+                    .await;
                 }
                 _ => {}
             }
@@ -243,10 +258,19 @@ async fn main() {
 
     let synchronization_task = tokio::spawn({
         let shared_state = Arc::clone(&shared_state);
+        let shared_block_state = Arc::clone(&shared_block_state);
+        let shared_pool_state = Arc::clone(&shared_pool_state);
+        let shared_consensus_state = Arc::clone(&shared_consensus_state);
         async move {
             loop {
                 // for now the loop syncs one block at a time, this can be optimized
-                synchronization_loop(Arc::clone(&shared_state)).await;
+                synchronization_loop(
+                    Arc::clone(&shared_state),
+                    Arc::clone(&shared_block_state),
+                    Arc::clone(&shared_pool_state),
+                    Arc::clone(&shared_consensus_state),
+                )
+                .await;
                 tokio::time::sleep(Duration::from_secs(120)).await;
             }
         }

@@ -16,9 +16,9 @@ use patricia_trie::{
 use reqwest::Response;
 
 pub async fn handle_synchronization_response(
-    shared_state_lock: &mut tokio::sync::MutexGuard<'_, ServerState>,
-    block_state_lock: &mut tokio::sync::MutexGuard<'_, BlockStore>,
-    consensus_state_lock: &mut tokio::sync::MutexGuard<'_, InMemoryConsensus>,
+    shared_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, ServerState>,
+    block_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, BlockStore>,
+    consensus_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, InMemoryConsensus>,
     response: Response,
     next_height: u32,
 ) {
@@ -45,11 +45,14 @@ pub async fn handle_synchronization_response(
                 &mut shared_state_lock.merkle_trie_state,
                 &mut leaf,
                 root_node,
-            );
+            )
+            .expect("Failed to insert leaf!");
             root_node = Node::Root(new_root);
         }
         // update trie root
-        shared_state_lock.merkle_trie_root = root_node.unwrap_as_root();
+        shared_state_lock.merkle_trie_root = root_node
+            .unwrap_as_root()
+            .expect("Failed to unwrap as root, this should never happen :(");
         consensus_state_lock.reinitialize();
         println!(
             "{}",
@@ -137,7 +140,7 @@ pub async fn handle_block_proposal(
         );
         block_state_lock.insert_block(proposal.height, proposal.clone());
         // insert transactions into the trie
-        let root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
+        let mut root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
         for transaction in &proposal.transactions {
             let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
             leaf.hash();
@@ -149,17 +152,18 @@ pub async fn handle_block_proposal(
                 .flat_map(|&byte| (0..8).rev().map(move |i| (byte >> i) & 1))
                 .collect();
             leaf.hash();
-            todo!("check if leaf exists and insert otherwise");
-            // currently duplicate insertion will cause an error
+            // currently duplicate insertion will kill sequencer runtime
             let new_root = insert_leaf(
                 &mut shared_state_lock.merkle_trie_state,
                 &mut leaf,
                 root_node,
-            );
+            ).expect("Failed to insert, did someone try to insert a duplicate? - In production this should not kill runtime, but currently it does - hihi!");
             root_node = Node::Root(new_root);
         }
         // update in-memory trie root
-        shared_state_lock.merkle_trie_root = root_node.unwrap_as_root();
+        shared_state_lock.merkle_trie_root = root_node
+            .unwrap_as_root()
+            .expect("failed to unwrap as root, this should never happen :(");
         println!(
             "{}",
             format_args!("{} Block was stored: {}", "[Info]".green(), proposal.height)

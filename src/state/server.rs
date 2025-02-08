@@ -8,13 +8,6 @@ use crate::{
 use k256::ecdsa::{SigningKey, VerifyingKey};
 use rusqlite::{params, Connection};
 use std::env;
-
-pub trait InMemoryBlockStore {
-    fn empty() -> Self;
-    fn trigger_genesis(&mut self, timestamp: Timestamp);
-    fn insert_block(&mut self, previous_height: u32, block: Block);
-    fn get_block_by_height(&self, height: u32) -> Block;
-}
 pub trait SqLiteBlockStore {
     fn setup(&self);
     fn trigger_genesis(&mut self, timestamp: Timestamp);

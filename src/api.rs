@@ -126,11 +126,9 @@ pub async fn merkle_proof(
         &mut state_lock.merkle_trie_state,
         key,
         Node::Root(trie_root),
-    );
-    match merkle_proof {
-        Some(merkle_proof) => serde_json::to_string(&merkle_proof).unwrap(),
-        None => "[Err] Failed to generate Merkle Proof for Transaction".to_string(),
-    }
+    )
+    .expect("Failed to get merkle proof!");
+    serde_json::to_string(&merkle_proof).unwrap()
 }
 pub async fn get_pool(
     Extension(_): Extension<Arc<RwLock<ServerState>>>,

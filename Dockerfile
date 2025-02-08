@@ -20,7 +20,7 @@ RUN cargo risczero build-toolchain --version v2024-04-22.0
 COPY . .
 
 # Build the Rust project with the necessary feature
-RUN cargo build --release -F mock-net
+RUN cargo build --release -F local-net
 
 RUN mkdir -p /var/data/
 
