@@ -94,7 +94,8 @@ mod tests {
                 .expect("[Error] No Trie Root present!")
                 .hash
                 .unwrap(),
-        );
+        )
+        .expect("Failed to verify Merkle proof!");
     }
 
     #[tokio::test]

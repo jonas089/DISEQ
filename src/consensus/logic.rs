@@ -20,7 +20,7 @@ pub fn get_committing_validator(
 ) -> VerifyingKey {
     let round = current_round(last_block_unix_timestamp) - 1;
     // returns the current validator
-    validators[round as usize % (validators.len() - 1) as usize]
+    validators[round as usize % (validators.len() - 1)]
 }
 fn choose_winner(random_commitment: BigInt, validators: Vec<VerifyingKey>) -> VerifyingKey {
     let index = (random_commitment % (validators.len() - 1))
