@@ -99,7 +99,7 @@ async fn synchronization_loop(
             }
         }
     }
-    #[cfg(not(feature = "mock-net"))]
+    #[cfg(not(feature = "local-net"))]
     {
         todo!("Implement mainnet synchronization!");
     }
