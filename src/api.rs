@@ -122,6 +122,7 @@ pub async fn merkle_proof(
 ) -> String {
     let mut state_lock = shared_state.lock().await;
     let trie_root = state_lock.merkle_trie_root.clone();
+    // todo: make merkle proof fn accept an immutable trie state instance
     let merkle_proof = patricia_trie::merkle::merkle_proof(
         &mut state_lock.merkle_trie_state,
         key,
