@@ -1,13 +1,11 @@
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM ubuntu:22.04
 
 WORKDIR /usr/src/app
 
-RUN apt-get update && apt-get install -y --fix-missing
-RUN apt-get clean && apt-get autoremove -y
-
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y
+RUN apt-get install -y \
     git curl cmake ninja-build python3 build-essential \
-    libssl-dev pkg-config gcc g++ libsqlite3-dev
+    libssl-dev libsqlite3-dev pkg-config gcc g++
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.81
 ENV PATH="/root/.cargo/bin:${PATH}"
