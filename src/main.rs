@@ -58,16 +58,29 @@ async fn synchronization_loop(
     shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
 ) {
     {
-        let mut shared_state_lock = shared_state.write().await;
-        let mut block_state_lock = shared_block_state.write().await;
-        let mut pool_state_lock = shared_pool_state.lock().await;
-        let mut consensus_state_lock = shared_consensus_state.write().await;
+        let maybe_shared_lock = shared_state.try_write();
+        let maybe_block_lock = shared_block_state.try_write();
+        let mut maybe_pool_lock = shared_pool_state.try_lock();
+        let mut maybe_consensus_lock = shared_consensus_state.try_write();
+        // skip if a lock can't be aquired / if occupied by synch loop
+        if maybe_shared_lock.is_err()
+            || maybe_block_lock.is_err()
+            || maybe_pool_lock.is_err()
+            || maybe_consensus_lock.is_err()
+        {
+            return;
+        }
+        let mut shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
+        let mut block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
+        let pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
+        let mut consensus_state_lock =
+            maybe_consensus_lock.expect("Failed to unwrap consensus lock");
         let next_height = block_state_lock.current_block_height();
         let gossipper = Gossipper {
             peers: PEERS.to_vec(),
             client: Client::new(),
         };
-        #[cfg(feature = "local-net")]
+
         for peer in gossipper.peers {
             // todo: make this generic for n amount of nodes
             let this_node = env::var("API_HOST_WITH_PORT").unwrap_or("0.0.0.0:8080".to_string());
@@ -111,12 +124,27 @@ async fn consensus_loop(
     shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
 ) {
     let unix_timestamp = get_current_time();
-    let shared_state_lock = shared_state.read().await;
-    let shared_block_lock = shared_block_state.read().await;
-    let mut shared_pool_lock = shared_pool_state.lock().await;
-    let mut shared_consensus_lock = shared_consensus_state.write().await;
-    let last_block_unix_timestamp = shared_block_lock
-        .get_block_by_height(shared_block_lock.current_block_height() - 1)
+    let maybe_shared_lock = shared_state.try_read();
+    let maybe_block_lock = shared_block_state.try_read();
+    let maybe_pool_lock = shared_pool_state.try_lock();
+    let maybe_consensus_lock = shared_consensus_state.try_write();
+
+    // skip if a lock can't be aquired / if occupied by synch loop
+    if maybe_shared_lock.is_err()
+        || maybe_block_lock.is_err()
+        || maybe_pool_lock.is_err()
+        || maybe_consensus_lock.is_err()
+    {
+        return;
+    }
+
+    let shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
+    let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
+    let mut pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
+    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+
+    let last_block_unix_timestamp = block_state_lock
+        .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
     // check if clearing phase of new consensus round
     if unix_timestamp
@@ -124,30 +152,30 @@ async fn consensus_loop(
             + ((((unix_timestamp - last_block_unix_timestamp) / (ROUND_DURATION)) * ROUND_DURATION)
                 + CLEARING_PHASE_DURATION)
     {
-        shared_consensus_lock.reinitialize();
+        consensus_state_lock.reinitialize();
         return;
     }
     let committing_validator = get_committing_validator(
         last_block_unix_timestamp,
-        shared_consensus_lock.validators.clone(),
+        consensus_state_lock.validators.clone(),
     );
     println!(
         "[Info] Current round: {}",
         current_round(last_block_unix_timestamp)
     );
-    let previous_block_height = shared_block_lock.current_block_height() - 1;
-    if shared_consensus_lock.local_validator == committing_validator
-        && !shared_consensus_lock.committed
+    let previous_block_height = block_state_lock.current_block_height() - 1;
+    if consensus_state_lock.local_validator == committing_validator
+        && !consensus_state_lock.committed
     {
         let random_zk_number = generate_random_number(
-            shared_consensus_lock
+            consensus_state_lock
                 .local_validator
                 .to_sec1_bytes()
                 .to_vec(),
             (previous_block_height + 1).to_be_bytes().to_vec(),
         );
         let commitment = ConsensusCommitment {
-            validator: shared_consensus_lock
+            validator: consensus_state_lock
                 .local_validator
                 .to_sec1_bytes()
                 .to_vec(),
@@ -158,17 +186,16 @@ async fn consensus_loop(
             .gossip_consensus_commitment(commitment.clone())
             .await;
         let proposing_validator =
-            evaluate_commitment(commitment, shared_consensus_lock.validators.clone());
-        shared_consensus_lock.round_winner = Some(proposing_validator);
-        shared_consensus_lock.committed = true;
+            evaluate_commitment(commitment, consensus_state_lock.validators.clone());
+        consensus_state_lock.round_winner = Some(proposing_validator);
+        consensus_state_lock.committed = true;
     }
-    if shared_consensus_lock.round_winner.is_none() {
+    if consensus_state_lock.round_winner.is_none() {
         return;
     }
-    let proposing_validator = shared_consensus_lock.round_winner.unwrap();
-    let transactions = shared_pool_lock.get_all_transactions();
-    if shared_consensus_lock.local_validator == proposing_validator
-        && !shared_consensus_lock.proposed
+    let proposing_validator = consensus_state_lock.round_winner.unwrap();
+    let transactions = pool_state_lock.get_all_transactions();
+    if consensus_state_lock.local_validator == proposing_validator && !consensus_state_lock.proposed
     {
         let mut proposed_block = Block {
             height: previous_block_height + 1,
@@ -177,7 +204,7 @@ async fn consensus_loop(
             commitments: None,
             timestamp: unix_timestamp,
         };
-        let mut signing_key = shared_consensus_lock.local_signing_key.clone();
+        let mut signing_key = consensus_state_lock.local_signing_key.clone();
         let signature: Signature = signing_key.sign(&proposed_block.to_bytes());
         proposed_block.signature = Some(signature.to_bytes().to_vec());
         println!(
@@ -188,8 +215,8 @@ async fn consensus_loop(
             .local_gossipper
             .gossip_pending_block(proposed_block, last_block_unix_timestamp)
             .await;
-        shared_consensus_lock.proposed = true;
-        shared_pool_lock.reinitialize()
+        consensus_state_lock.proposed = true;
+        pool_state_lock.reinitialize()
     }
 }
 #[tokio::main]
