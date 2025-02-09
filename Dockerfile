@@ -1,5 +1,5 @@
 # Use the Rust official image
-FROM rust:1.81.0
+FROM rust:1.84.0
 
 # Set the working directory
 WORKDIR /usr/src/app
