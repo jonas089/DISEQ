@@ -1,28 +1,35 @@
-FROM --platform=linux/arm64 ubuntu:22.04
-WORKDIR /usr/src/app
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    curl cmake ninja-build python3 build-essential libssl-dev pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.84
-ENV PATH="/root/.cargo/bin:${PATH}"
-# Verify Rust installation
-RUN rustc --version
-# Install necessary dependencies
-RUN apt-get update && apt-get install git curl cmake ninja-build python3 build-essential libssl-dev pkg-config -y
-# Install cargo-binstall
-RUN cargo install cargo-binstall
-# Install cargo-risczero using binstall
-RUN cargo binstall cargo-risczero --version 1.2.0 -y
-# Build the risc0 toolchain
-RUN cargo risczero build-toolchain
-# Copy the entire Rust project into the container
-COPY . .
-# Build the Rust project with the necessary feature
-RUN export RUSTFLAGS="-Z unstable-options"
-RUN cargo build --release -F local-net
-RUN mkdir -p /var/data/
-RUN chmod -R 777 /var/data/
+FROM --platform=linux/amd64 ubuntu:22.04
 
-# Set the entrypoint to run the compiled binary
+WORKDIR /usr/src/app
+
+RUN apt-get update && apt-get install -y --fix-missing
+RUN apt-get clean && apt-get autoremove -y
+
+RUN apt-get update && apt-get install -y \
+    git curl cmake ninja-build python3 build-essential \
+    libssl-dev pkg-config gcc g++
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.81
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustc --version
+
+# Clone the RISC Zero repository
+RUN git clone https://github.com/risc0/risc0.git /usr/src/risc0
+WORKDIR /usr/src/risc0
+
+# Install rzup manually using Cargo
+RUN cargo install --path rzup
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rzup --help
+
+ARG RISCVM_VERSION="v1.2.2"
+RUN git fetch --tags && git checkout tags/${RISCVM_VERSION}
+RUN cargo install --path risc0/cargo-risczero
+RUN rzup install
+
+
+WORKDIR /usr/src/app
+COPY . .
+RUN cargo build --release -F local-net
+RUN mkdir -p /var/data/ && chmod -R 777 /var/data/
 CMD ["./target/release/l2-sequencer"]

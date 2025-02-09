@@ -1409,15 +1409,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "keccak"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc2af9a1119c51f12a14607e783cb977bde58bc069ff0c3da1095e635d70654"
-dependencies = [
- "cpufeatures",
-]
-
-[[package]]
 name = "l2-sequencer"
 version = "0.1.0"
 dependencies = [
@@ -1914,7 +1905,7 @@ dependencies = [
 [[package]]
 name = "prover"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/L2-sequencer-utils#a11a7998ca4264893fce6bcbdf735c9d612be816"
+source = "git+https://github.com/jonas089/L2-sequencer-utils#55e0701db97181429bfbd1dd2ef3b46e2604de43"
 dependencies = [
  "rand",
  "risc0-zkvm",
@@ -2173,9 +2164,9 @@ dependencies = [
 
 [[package]]
 name = "risc0-build"
-version = "1.2.0"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f99fb40aeeaf59dddd6b6c3a177c95e8b3c7f0fb6de7d25a0687d12398323292"
+checksum = "4481ff9a05c3d96c0df2278a4681172fb40291253049a3ab57ffa2c46c24a0ba"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -2188,6 +2179,22 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "risc0-circuit-keccak"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25beb2e593a72e4baa3ed9a18a2ee4148f629bfa9dcdac5cbe84faa12d2590d1"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "paste",
+ "risc0-binfmt",
+ "risc0-circuit-recursion",
+ "risc0-core",
+ "risc0-zkp",
+ "tracing",
 ]
 
 [[package]]
@@ -2278,9 +2285,9 @@ dependencies = [
 
 [[package]]
 name = "risc0-zkvm"
-version = "1.2.0"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b619085d02d57dcafc41eb74714682797ed666621ced1814c55bbe7ae7762ba"
+checksum = "6700c4875b90726b7bf9e981fccbde4ea11b3593d3b2ac6fa09c96f6de166152"
 dependencies = [
  "anyhow",
  "bincode",
@@ -2294,6 +2301,7 @@ dependencies = [
  "prost",
  "risc0-binfmt",
  "risc0-build",
+ "risc0-circuit-keccak",
  "risc0-circuit-recursion",
  "risc0-circuit-rv32im",
  "risc0-core",
@@ -2304,7 +2312,6 @@ dependencies = [
  "semver",
  "serde",
  "sha2",
- "sha3",
  "stability",
  "tempfile",
  "tracing",
@@ -2560,16 +2567,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
-]
-
-[[package]]
-name = "sha3"
-version = "0.10.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
-dependencies = [
- "digest",
- "keccak",
 ]
 
 [[package]]
@@ -3548,7 +3545,7 @@ dependencies = [
 [[package]]
 name = "zk-logic"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/L2-sequencer-utils#a11a7998ca4264893fce6bcbdf735c9d612be816"
+source = "git+https://github.com/jonas089/L2-sequencer-utils#55e0701db97181429bfbd1dd2ef3b46e2604de43"
 dependencies = [
  "num-bigint",
  "serde",
@@ -3558,7 +3555,7 @@ dependencies = [
 [[package]]
 name = "zk-methods"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/L2-sequencer-utils#a11a7998ca4264893fce6bcbdf735c9d612be816"
+source = "git+https://github.com/jonas089/L2-sequencer-utils#55e0701db97181429bfbd1dd2ef3b46e2604de43"
 dependencies = [
  "risc0-build",
 ]
