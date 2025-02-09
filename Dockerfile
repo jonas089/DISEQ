@@ -1,11 +1,11 @@
 # Use the Rust official image
-FROM rust:latest
+FROM rust:1.81.0
 
 # Set the working directory
 WORKDIR /usr/src/app
 
 # Install necessary dependencies
-RUN apt-get update && apt-get install curl cmake ninja-build python3 -y
+RUN apt-get update && apt-get install curl cmake ninja-build python3 build-essential libssl-dev pkg-config -y
 
 # Install cargo-binstall
 RUN cargo install cargo-binstall
@@ -14,7 +14,7 @@ RUN cargo install cargo-binstall
 RUN cargo binstall cargo-risczero --version 1.2.0 -y
 
 # Build the risc0 toolchain
-RUN cargo risczero build-toolchain --version v2024-04-22.0
+RUN cargo risczero build-toolchain
 
 # Copy the entire Rust project into the container
 COPY . .
