@@ -1905,7 +1905,7 @@ dependencies = [
 [[package]]
 name = "prover"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/L2-sequencer-utils#c8f616ece9f101e021adea8fa4092bf27988b2a2"
+source = "git+https://github.com/jonas089/L2-sequencer-utils#c933424e0214c38ea064313e09ac0ce6e5b897b6"
 dependencies = [
  "rand",
  "risc0-zkvm",
@@ -3545,7 +3545,7 @@ dependencies = [
 [[package]]
 name = "zk-logic"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/L2-sequencer-utils#c8f616ece9f101e021adea8fa4092bf27988b2a2"
+source = "git+https://github.com/jonas089/L2-sequencer-utils#c933424e0214c38ea064313e09ac0ce6e5b897b6"
 dependencies = [
  "num-bigint",
  "serde",
@@ -3555,7 +3555,7 @@ dependencies = [
 [[package]]
 name = "zk-methods"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/L2-sequencer-utils#c8f616ece9f101e021adea8fa4092bf27988b2a2"
+source = "git+https://github.com/jonas089/L2-sequencer-utils#c933424e0214c38ea064313e09ac0ce6e5b897b6"
 dependencies = [
  "risc0-build",
 ]
