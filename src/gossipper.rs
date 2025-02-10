@@ -1,4 +1,3 @@
-use crate::config::consensus::GOSSIP_PROPOSAL_RETRY_LIMIT_PER_PEER;
 use crate::types::ConsensusCommitment;
 use crate::{consensus::logic::current_round, types::Block};
 use colored::Colorize;
@@ -15,7 +14,7 @@ pub async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Op
         .post(format!("http://{}{}", &peer, "/propose"))
         .header("Content-Type", "application/json")
         .body(json_block)
-        .timeout(Duration::from_secs(30))
+        //.timeout(Duration::from_secs(30))
         .send()
         .await
     {
@@ -35,52 +34,41 @@ impl Gossipper {
             if docker_skip_self(&this_node, peer) {
                 continue;
             };
-            // spawn a task to gossip to the peer, repeat until it succeeds.
             tokio::spawn(async move {
-                let mut attempts = 0;
-                loop {
-                    let start_round = current_round(last_block_unix_timestamp);
-                    let round = current_round(last_block_unix_timestamp);
-                    if start_round < round {
-                        println!("[Warning] Gossipping old Block");
-                    }
-                    let response =
-                        match send_proposal(client_clone.clone(), peer_clone, json_block.clone())
+                let start_round = current_round(last_block_unix_timestamp);
+                let round = current_round(last_block_unix_timestamp);
+                if start_round < round {
+                    println!("[Warning] Gossipping old Block");
+                }
+                let response =
+                    match send_proposal(client_clone.clone(), peer_clone, json_block.clone()).await
+                    {
+                        Some(r) => r
+                            .text()
                             .await
-                        {
-                            Some(r) => r
-                                .text()
-                                .await
-                                .unwrap_or("[Err] Peer unresponsive".to_string()),
-                            None => "[Err] Failed to send request".to_string(),
-                        };
-                    if response == "[Ok] Block was processed" {
-                        println!(
-                            "{}",
-                            format_args!(
-                                "{} Block was successfully sent to peer: {}",
-                                "[Info]".green(),
-                                &peer_clone
-                            )
-                        );
-                    } else {
-                        println!(
-                            "{}",
-                            format_args!(
-                                "{} Failed to gossip to peer: {}, response: {}",
-                                "[Error]".red(),
-                                &peer_clone,
-                                response
-                            )
-                        );
-                        sleep(Duration::from_secs(1)).await;
-                        attempts += 1;
-                        if attempts >= GOSSIP_PROPOSAL_RETRY_LIMIT_PER_PEER {
-                            break;
-                        }
-                        continue;
-                    }
-                    break;
+                            .unwrap_or("[Err] Peer unresponsive".to_string()),
+                        None => "[Err] Failed to send request".to_string(),
+                    };
+                if response == "[Ok] Block was processed" {
+                    println!(
+                        "{}",
+                        format_args!(
+                            "{} Block was successfully sent to peer: {}",
+                            "[Info]".green(),
+                            &peer_clone
+                        )
+                    );
+                } else {
+                    println!(
+                        "{}",
+                        format_args!(
+                            "{} Failed to gossip to peer: {}, response: {}",
+                            "[Error]".red(),
+                            &peer_clone,
+                            response
+                        )
+                    );
+                    sleep(Duration::from_secs(1)).await;
                 }
             });
         }
@@ -100,7 +88,7 @@ impl Gossipper {
                     .post(format!("http://{}{}", &peer, "/commit"))
                     .header("Content-Type", "application/json")
                     .body(json_commitment_clone)
-                    .timeout(Duration::from_secs(20))
+                    //.timeout(Duration::from_secs(20))
                     .send()
                     .await
                 {

@@ -91,7 +91,7 @@ async fn synchronization_loop(
             let response: Option<Response> = match gossipper
                 .client
                 .get(format!("http://{}{}{}", &peer, "/get/block/", next_height))
-                .timeout(Duration::from_secs(20))
+                //.timeout(Duration::from_secs(20))
                 .send()
                 .await
             {
@@ -147,6 +147,7 @@ async fn consensus_loop(
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
+
     // check if clearing phase of new consensus round
     if unix_timestamp
         <= last_block_unix_timestamp
@@ -156,14 +157,17 @@ async fn consensus_loop(
         consensus_state_lock.reinitialize();
         return;
     }
+
     let committing_validator = get_committing_validator(
         last_block_unix_timestamp,
         consensus_state_lock.validators.clone(),
     );
+
     println!(
         "[Info] Current round: {}",
         current_round(last_block_unix_timestamp)
     );
+
     let previous_block_height = block_state_lock.current_block_height() - 1;
     if consensus_state_lock.local_validator == committing_validator
         && !consensus_state_lock.committed
@@ -191,11 +195,14 @@ async fn consensus_loop(
         consensus_state_lock.round_winner = Some(proposing_validator);
         consensus_state_lock.committed = true;
     }
+
     if consensus_state_lock.round_winner.is_none() {
         return;
     }
+
     let proposing_validator = consensus_state_lock.round_winner.unwrap();
     let transactions = pool_state_lock.get_all_transactions();
+
     if consensus_state_lock.local_validator == proposing_validator && !consensus_state_lock.proposed
     {
         let mut proposed_block = Block {

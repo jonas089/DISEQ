@@ -209,8 +209,7 @@ pub async fn handle_block_proposal(
         // spawn more gossiper tasks, but don't await them!
         let _ = shared_state_lock
             .local_gossipper
-            .gossip_pending_block(proposal.clone(), last_block_unix_timestamp)
-            .await;
+            .gossip_pending_block(proposal.clone(), last_block_unix_timestamp);
     } else {
         println!(
             "{}",

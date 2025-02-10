@@ -35,6 +35,7 @@ pub async fn commit(
     Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(commitment): Json<ConsensusCommitment>,
 ) -> String {
+    println!("[Info] Received Commitment (API)!");
     let block_state_lock = shared_block_state.read().await;
     let mut consensus_state_lock = shared_consensus_state.write().await;
     let success_response = format!("[Ok] Commitment was accepted: {:?}", &commitment).to_string();
@@ -67,6 +68,7 @@ pub async fn propose(
     Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
+    println!("[Info] Received Block Proposal (API)!");
     let block_state_lock = shared_block_state.read().await;
     let mut consensus_state_lock = shared_consensus_state.write().await;
     let last_block_unix_timestamp = block_state_lock
