@@ -75,6 +75,9 @@ pub async fn handle_block_proposal(
     proposal: &mut Block,
     error_response: String,
 ) -> Option<String> {
+    // will refuse this block if previously signed a lower block
+    // -> 'lowest' block always wins, both in consensus and synchronization
+    // this is the way this sequencer deals with chain splits
     let early_revert: bool = match &consensus_state_lock.lowest_block {
         Some(v) => {
             if proposal.to_bytes() < v.clone() {
@@ -206,7 +209,8 @@ pub async fn handle_block_proposal(
         // spawn more gossiper tasks, but don't await them!
         let _ = shared_state_lock
             .local_gossipper
-            .gossip_pending_block(proposal.clone(), last_block_unix_timestamp);
+            .gossip_pending_block(proposal.clone(), last_block_unix_timestamp)
+            .await;
     } else {
         println!(
             "{}",

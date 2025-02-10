@@ -52,6 +52,11 @@ pub async fn commit(
             let winner = evaluate_commitment(commitment, consensus_state_lock.validators.clone());
             consensus_state_lock.round_winner = Some(winner);
         }
+    } else {
+        println!(
+            "[Info] Round Winner: {:?}",
+            &consensus_state_lock.round_winner
+        );
     }
     success_response
 }

@@ -208,10 +208,7 @@ async fn consensus_loop(
         let mut signing_key = consensus_state_lock.local_signing_key.clone();
         let signature: Signature = signing_key.sign(&proposed_block.to_bytes());
         proposed_block.signature = Some(signature.to_bytes().to_vec());
-        println!(
-            "{}",
-            format_args!("{} Gossipping proposed Block", "[Info]".green())
-        );
+        println!("{}", format_args!("{} Proposing Block!", "[Info]".green()));
         // only for testing, send proposal to one node that is not self
         let this_node =
             env::var("API_HOST_WITH_PORT").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
