@@ -61,7 +61,8 @@ impl Gossipper {
                             )
                         );
                     } else {
-                        // re-start the gossipper if it hasn't reached all nodes
+                        // re-start the gossipper if it hasn't reached the node - not a good idea in production!
+                        // this is pretty bad in cases where nodes go offline! - set a retry limit later.
                         println!(
                             "{}",
                             format_args!(
