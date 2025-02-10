@@ -186,10 +186,11 @@ async fn consensus_loop(
                 .to_vec(),
             receipt: random_zk_number,
         };
+        // don't await gossipping the commitment
         let _ = shared_state_lock
             .local_gossipper
-            .gossip_consensus_commitment(commitment.clone())
-            .await;
+            .gossip_consensus_commitment(commitment.clone());
+        //.await;
         let proposing_validator =
             evaluate_commitment(commitment, consensus_state_lock.validators.clone());
         consensus_state_lock.round_winner = Some(proposing_validator);
@@ -219,7 +220,8 @@ async fn consensus_loop(
         // only for testing, send proposal to one node that is not self
         let this_node =
             env::var("API_HOST_WITH_PORT").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-        // Find a peer that is NOT self
+        // submit to a peer that is not self (single peer for testing) - the peer should
+        // further gossip this proposal until it gains enough attestations
         let trusted_peer: &'static str = PEERS
             .iter()
             .find(|&&ref peer| peer != &this_node)
@@ -227,7 +229,7 @@ async fn consensus_loop(
             .expect("[Error] No valid peer found!");
         let _ = send_proposal(
             reqwest::Client::new(),
-            trusted_peer, // Pass reference to owned String
+            trusted_peer,
             serde_json::to_string(&proposed_block).unwrap(),
         )
         .await;
