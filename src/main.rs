@@ -59,23 +59,22 @@ async fn synchronization_loop(
     shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
 ) {
     {
-        let maybe_shared_lock = shared_state.try_write();
-        let maybe_block_lock = shared_block_state.try_write();
-        let mut maybe_pool_lock = shared_pool_state.try_lock();
-        let mut maybe_consensus_lock = shared_consensus_state.try_write();
+        let maybe_shared_lock = shared_state.write().await;
+        let maybe_block_lock = shared_block_state.write().await;
+        let mut maybe_pool_lock = shared_pool_state.lock().await;
+        let mut maybe_consensus_lock = shared_consensus_state.write().await;
         // skip if a lock can't be aquired / if occupied by synch loop
-        if maybe_shared_lock.is_err()
+        /*if maybe_shared_lock.is_err()
             || maybe_block_lock.is_err()
             || maybe_pool_lock.is_err()
             || maybe_consensus_lock.is_err()
         {
             return;
-        }
-        let mut shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
-        let mut block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-        let pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
-        let mut consensus_state_lock =
-            maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+        }*/
+        let mut shared_state_lock = maybe_shared_lock; //.expect("Failed to unwrap shared lock");
+        let mut block_state_lock = maybe_block_lock; //.expect("Failed to unwrap block lock");
+        let pool_state_lock = maybe_pool_lock; //.expect("Failed to unwrap pool lock");
+        let mut consensus_state_lock = maybe_consensus_lock; //.expect("Failed to unwrap consensus lock");
         let next_height = block_state_lock.current_block_height();
         let gossipper = Gossipper {
             peers: PEERS.to_vec(),
@@ -125,24 +124,24 @@ async fn consensus_loop(
     shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
 ) {
     let unix_timestamp = get_current_time();
-    let maybe_shared_lock = shared_state.try_read();
-    let maybe_block_lock = shared_block_state.try_read();
-    let maybe_pool_lock = shared_pool_state.try_lock();
-    let maybe_consensus_lock = shared_consensus_state.try_write();
+    let maybe_shared_lock = shared_state.read().await;
+    let maybe_block_lock = shared_block_state.read().await;
+    let maybe_pool_lock = shared_pool_state.lock().await;
+    let maybe_consensus_lock = shared_consensus_state.write().await;
 
     // skip if a lock can't be aquired / if occupied by synch loop
-    if maybe_shared_lock.is_err()
+    /*if maybe_shared_lock.is_err()
         || maybe_block_lock.is_err()
         || maybe_pool_lock.is_err()
         || maybe_consensus_lock.is_err()
     {
         return;
-    }
+    }*/
 
-    let shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
-    let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-    let mut pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
-    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+    let shared_state_lock = maybe_shared_lock; //.expect("Failed to unwrap shared lock");
+    let block_state_lock = maybe_block_lock; //.expect("Failed to unwrap block lock");
+    let mut pool_state_lock = maybe_pool_lock; //.expect("Failed to unwrap pool lock");
+    let mut consensus_state_lock = maybe_consensus_lock; //.expect("Failed to unwrap consensus lock");
 
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
