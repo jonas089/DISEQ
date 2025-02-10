@@ -3,7 +3,7 @@ services:
     container_name: rust-node-1
     build: .
     restart: always
-    user: "1000:1000"
+    user: "root"
     environment:
       - PATH_TO_DB=/var/data/node-1.sqlite
       - API_HOST_WITH_PORT=0.0.0.0:8080
@@ -17,7 +17,7 @@ services:
     container_name: rust-node-2
     build: .
     restart: always
-    user: "1000:1000"
+    user: "root"
     environment:
       - PATH_TO_DB=/var/data/node-2.sqlite
       - API_HOST_WITH_PORT=0.0.0.0:8081
@@ -31,7 +31,7 @@ services:
     container_name: rust-node-3
     build: .
     restart: always
-    user: "1000:1000"
+    user: "root"
     environment:
       - PATH_TO_DB=/var/data/node-2.sqlite
       - API_HOST_WITH_PORT=0.0.0.0:8082
@@ -45,7 +45,7 @@ services:
     container_name: rust-node-4
     build: .
     restart: always
-    user: "1000:1000"
+    user: "root"
     environment:
       - PATH_TO_DB=/var/data/node-2.sqlite
       - API_HOST_WITH_PORT=0.0.0.0:8083
