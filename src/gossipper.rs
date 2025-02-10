@@ -35,45 +35,39 @@ impl Gossipper {
             };
             // spawn a task to gossip to the peer, repeat until it succeeds.
             tokio::spawn(async move {
-                loop {
-                    let start_round = current_round(last_block_unix_timestamp);
-                    let round = current_round(last_block_unix_timestamp);
-                    if start_round < round {
-                        println!("[Warning] Gossipping old Block");
-                    }
-                    let response =
-                        match send_proposal(client_clone.clone(), peer_clone, json_block.clone())
+                let start_round = current_round(last_block_unix_timestamp);
+                let round = current_round(last_block_unix_timestamp);
+                if start_round < round {
+                    println!("[Warning] Gossipping old Block");
+                }
+                let response =
+                    match send_proposal(client_clone.clone(), peer_clone, json_block.clone()).await
+                    {
+                        Some(r) => r
+                            .text()
                             .await
-                        {
-                            Some(r) => r
-                                .text()
-                                .await
-                                .unwrap_or("[Err] Peer unresponsive".to_string()),
-                            None => "[Err] Failed to send request".to_string(),
-                        };
-                    if response == "[Ok] Block was processed" {
-                        println!(
-                            "{}",
-                            format_args!(
-                                "{} Block was successfully sent to peer: {}",
-                                "[Info]".green(),
-                                &peer_clone
-                            )
-                        );
-                    } else {
-                        // re-start the gossipper if it hasn't reached the node - not a good idea in production!
-                        // this is pretty bad in cases where nodes go offline! - set a retry limit later.
-                        println!(
-                            "{}",
-                            format_args!(
-                                "{} Gossipper failed for {}, repeating!",
-                                "[Warning]".yellow(),
-                                peer
-                            )
-                        );
-                        continue;
-                    }
-                    break;
+                            .unwrap_or("[Err] Peer unresponsive".to_string()),
+                        None => "[Err] Failed to send request".to_string(),
+                    };
+                if response == "[Ok] Block was processed" {
+                    println!(
+                        "{}",
+                        format_args!(
+                            "{} Block was successfully sent to peer: {}",
+                            "[Info]".green(),
+                            &peer_clone
+                        )
+                    );
+                } else {
+                    println!(
+                        "{}",
+                        format_args!(
+                            "{} Failed to gossip to peer: {}, response: {}",
+                            "[Error]".red(),
+                            &peer_clone,
+                            response
+                        )
+                    );
                 }
             });
         }
