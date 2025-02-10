@@ -20,7 +20,13 @@ async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Option
         .await
     {
         Ok(r) => Some(r),
-        Err(_) => None,
+        Err(e) => {
+            println!(
+                "{}",
+                format_args!("{} Failed to send proposal, reason: {}", "[Error]".red(), e)
+            );
+            None
+        }
     };
     response
 }
