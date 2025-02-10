@@ -21,7 +21,7 @@ use config::{
     network::PEERS,
 };
 use consensus::logic::{current_round, evaluate_commitment, get_committing_validator};
-use gossipper::{send_proposal, Peer};
+use gossipper::send_proposal;
 use k256::ecdsa::{signature::SignerMut, Signature};
 use prover::generate_random_number;
 use reqwest::Client;

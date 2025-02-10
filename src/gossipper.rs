@@ -10,7 +10,7 @@ pub struct Gossipper {
     pub peers: Vec<Peer>,
     pub client: Client,
 }
-async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Option<Response> {
+pub async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Option<Response> {
     let response: Option<Response> = match client
         .post(format!("http://{}{}", &peer, "/propose"))
         .header("Content-Type", "application/json")
