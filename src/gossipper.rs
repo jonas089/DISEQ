@@ -33,32 +33,47 @@ impl Gossipper {
             if docker_skip_self(&this_node, peer) {
                 continue;
             };
+            // spawn a task to gossip to the peer, repeat until it succeeds.
             tokio::spawn(async move {
-                let start_round = current_round(last_block_unix_timestamp);
-                let round = current_round(last_block_unix_timestamp);
-                if start_round < round {
-                    println!("[Warning] Gossipping old Block");
-                }
-                let response =
-                    match send_proposal(client_clone.clone(), peer_clone, json_block.clone()).await
-                    {
-                        Some(r) => r
-                            .text()
+                loop {
+                    let start_round = current_round(last_block_unix_timestamp);
+                    let round = current_round(last_block_unix_timestamp);
+                    if start_round < round {
+                        println!("[Warning] Gossipping old Block");
+                    }
+                    let response =
+                        match send_proposal(client_clone.clone(), peer_clone, json_block.clone())
                             .await
-                            .unwrap_or("[Err] Peer unresponsive".to_string()),
-                        None => "[Err] Failed to send request".to_string(),
-                    };
-                if response == "[Ok] Block was processed" {
-                    println!(
-                        "{}",
-                        format_args!(
-                            "{} Block was successfully sent to peer: {}",
-                            "[Info]".green(),
-                            &peer_clone
-                        )
-                    );
+                        {
+                            Some(r) => r
+                                .text()
+                                .await
+                                .unwrap_or("[Err] Peer unresponsive".to_string()),
+                            None => "[Err] Failed to send request".to_string(),
+                        };
+                    if response == "[Ok] Block was processed" {
+                        println!(
+                            "{}",
+                            format_args!(
+                                "{} Block was successfully sent to peer: {}",
+                                "[Info]".green(),
+                                &peer_clone
+                            )
+                        );
+                    } else {
+                        // re-start the gossipper if it hasn't reached all nodes
+                        println!(
+                            "{}",
+                            format_args!(
+                                "{} Gossipper failed for {}, repeating!",
+                                "[Warning]".yellow(),
+                                peer
+                            )
+                        );
+                        continue;
+                    }
+                    break;
                 }
-                sleep(Duration::from_secs(3)).await;
             });
         }
     }
