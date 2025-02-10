@@ -90,7 +90,7 @@ async fn synchronization_loop(
             let response: Option<Response> = match gossipper
                 .client
                 .get(format!("http://{}{}{}", &peer, "/get/block/", next_height))
-                .timeout(Duration::from_secs(15))
+                .timeout(Duration::from_secs(20))
                 .send()
                 .await
             {
