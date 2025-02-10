@@ -23,6 +23,7 @@ RUN rzup --help
 ARG RISCVM_VERSION="v1.2.2"
 RUN git fetch --tags && git checkout tags/${RISCVM_VERSION}
 RUN cargo install --path risc0/cargo-risczero
+RUN rzup install cpp
 RUN rzup install
 
 

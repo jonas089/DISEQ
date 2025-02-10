@@ -1,8 +1,10 @@
+use crate::config::consensus::GOSSIP_PROPOSAL_RETRY_LIMIT_PER_PEER;
 use crate::types::ConsensusCommitment;
 use crate::{consensus::logic::current_round, types::Block};
 use colored::Colorize;
 use reqwest::{Client, Response};
 use std::{env, time::Duration};
+use tokio::time::sleep;
 pub type Peer = &'static str;
 pub struct Gossipper {
     pub peers: Vec<Peer>,
@@ -34,39 +36,50 @@ impl Gossipper {
             };
             // spawn a task to gossip to the peer, repeat until it succeeds.
             tokio::spawn(async move {
-                let start_round = current_round(last_block_unix_timestamp);
-                let round = current_round(last_block_unix_timestamp);
-                if start_round < round {
-                    println!("[Warning] Gossipping old Block");
-                }
-                let response =
-                    match send_proposal(client_clone.clone(), peer_clone, json_block.clone()).await
-                    {
-                        Some(r) => r
-                            .text()
+                let mut attempts = 0;
+                loop {
+                    let start_round = current_round(last_block_unix_timestamp);
+                    let round = current_round(last_block_unix_timestamp);
+                    if start_round < round {
+                        println!("[Warning] Gossipping old Block");
+                    }
+                    let response =
+                        match send_proposal(client_clone.clone(), peer_clone, json_block.clone())
                             .await
-                            .unwrap_or("[Err] Peer unresponsive".to_string()),
-                        None => "[Err] Failed to send request".to_string(),
-                    };
-                if response == "[Ok] Block was processed" {
-                    println!(
-                        "{}",
-                        format_args!(
-                            "{} Block was successfully sent to peer: {}",
-                            "[Info]".green(),
-                            &peer_clone
-                        )
-                    );
-                } else {
-                    println!(
-                        "{}",
-                        format_args!(
-                            "{} Failed to gossip to peer: {}, response: {}",
-                            "[Error]".red(),
-                            &peer_clone,
-                            response
-                        )
-                    );
+                        {
+                            Some(r) => r
+                                .text()
+                                .await
+                                .unwrap_or("[Err] Peer unresponsive".to_string()),
+                            None => "[Err] Failed to send request".to_string(),
+                        };
+                    if response == "[Ok] Block was processed" {
+                        println!(
+                            "{}",
+                            format_args!(
+                                "{} Block was successfully sent to peer: {}",
+                                "[Info]".green(),
+                                &peer_clone
+                            )
+                        );
+                    } else {
+                        println!(
+                            "{}",
+                            format_args!(
+                                "{} Failed to gossip to peer: {}, response: {}",
+                                "[Error]".red(),
+                                &peer_clone,
+                                response
+                            )
+                        );
+                        sleep(Duration::from_secs(1)).await;
+                        attempts += 1;
+                        if attempts >= GOSSIP_PROPOSAL_RETRY_LIMIT_PER_PEER {
+                            break;
+                        }
+                        continue;
+                    }
+                    break;
                 }
             });
         }
