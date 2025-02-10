@@ -46,13 +46,13 @@ pub async fn handle_synchronization_response(
                 &mut leaf,
                 root_node,
             )
-            .expect("Failed to insert leaf!");
+            .expect("[Critical] Failed to insert leaf!");
             root_node = Node::Root(new_root);
         }
         // update trie root
         shared_state_lock.merkle_trie_root = root_node
             .unwrap_as_root()
-            .expect("Failed to unwrap as root, this should never happen :(");
+            .expect("[Critical] Failed to unwrap as root, this should never happen :(");
         consensus_state_lock.reinitialize();
         println!(
             "{}",
@@ -114,7 +114,10 @@ pub async fn handle_block_proposal(
                 }
             }
         } else {
-            println!("[Err] Invalid Proposal found with invalid VK")
+            println!(
+                "{}",
+                format_args!("{} Invalid Proposal found with invalid VK", "[Error]".red())
+            );
         }
         if commitment.validator
             == consensus_state_lock

@@ -104,7 +104,16 @@ impl Gossipper {
                     .send()
                     .await
                 {
-                    Ok(_) => {}
+                    Ok(_) => {
+                        println!(
+                            "{}",
+                            format_args!(
+                                "{} Successfully sent consensus commitment to peer: {}",
+                                "[Info]".yellow(),
+                                &peer,
+                            )
+                        );
+                    }
                     Err(e) => println!(
                         "{}",
                         format_args!(
