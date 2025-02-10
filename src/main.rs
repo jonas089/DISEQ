@@ -21,6 +21,7 @@ use config::{
     network::PEERS,
 };
 use consensus::logic::{current_round, evaluate_commitment, get_committing_validator};
+use gossipper::{send_proposal, Peer};
 use k256::ecdsa::{signature::SignerMut, Signature};
 use prover::generate_random_number;
 use reqwest::Client;
@@ -211,10 +212,21 @@ async fn consensus_loop(
             "{}",
             format_args!("{} Gossipping proposed Block", "[Info]".green())
         );
-        let _ = shared_state_lock
-            .local_gossipper
-            .gossip_pending_block(proposed_block, last_block_unix_timestamp)
-            .await;
+        // only for testing, send proposal to one node that is not self
+        let this_node =
+            env::var("API_HOST_WITH_PORT").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+        // Find a peer that is NOT self
+        let trusted_peer: &'static str = PEERS
+            .iter()
+            .find(|&&ref peer| peer != &this_node)
+            .cloned()
+            .expect("[Error] No valid peer found!");
+        let _ = send_proposal(
+            reqwest::Client::new(),
+            trusted_peer, // Pass reference to owned String
+            serde_json::to_string(&proposed_block).unwrap(),
+        )
+        .await;
         consensus_state_lock.proposed = true;
         pool_state_lock.reinitialize()
     }
