@@ -62,8 +62,8 @@ pub async fn propose(
     Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
-    let block_state_lock = shared_block_state.lock().await;
-    let mut consensus_state_lock = shared_consensus_state.lock().await;
+    let block_state_lock = shared_block_state.read().await;
+    let mut consensus_state_lock = shared_consensus_state.write().await;
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
@@ -85,8 +85,8 @@ pub async fn propose(
         match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
             Ok(_) => {
                 let res = handle_block_proposal(
-                    &mut shared_state.lock().await,
-                    &mut shared_block_state.lock().await,
+                    &mut shared_state.write().await,
+                    &mut shared_block_state.write().await,
                     &mut consensus_state_lock,
                     &mut proposal,
                     error_response,
@@ -120,7 +120,7 @@ pub async fn merkle_proof(
     Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(key): Json<Vec<u8>>,
 ) -> String {
-    let mut state_lock = shared_state.lock().await;
+    let mut state_lock = shared_state.write().await;
     let trie_root = state_lock.merkle_trie_root.clone();
     // todo: make merkle proof fn accept an immutable trie state instance
     let merkle_proof = patricia_trie::merkle::merkle_proof(
@@ -191,7 +191,7 @@ pub async fn get_height(
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
     Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
 ) -> String {
-    let block_state_lock = shared_block_state.lock().await;
+    let block_state_lock = shared_block_state.read().await;
     let previous_block_height = block_state_lock.current_block_height();
     serde_json::to_string(&previous_block_height).unwrap()
 }

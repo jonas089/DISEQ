@@ -69,9 +69,9 @@ pub async fn handle_synchronization_response(
     }
 }
 pub async fn handle_block_proposal(
-    shared_state_lock: &mut tokio::sync::MutexGuard<'_, ServerState>,
-    block_state_lock: &mut tokio::sync::MutexGuard<'_, BlockStore>,
-    consensus_state_lock: &mut tokio::sync::MutexGuard<'_, InMemoryConsensus>,
+    shared_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, ServerState>,
+    block_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, BlockStore>,
+    consensus_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, InMemoryConsensus>,
     proposal: &mut Block,
     error_response: String,
 ) -> Option<String> {
