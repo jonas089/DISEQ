@@ -33,7 +33,7 @@ services:
     restart: always
     user: "root"
     environment:
-      - PATH_TO_DB=/var/data/node-2.sqlite
+      - PATH_TO_DB=/var/data/node-3.sqlite
       - API_HOST_WITH_PORT=0.0.0.0:8082
       - LOCAL_VALIDATOR=2
     networks:
@@ -47,7 +47,7 @@ services:
     restart: always
     user: "root"
     environment:
-      - PATH_TO_DB=/var/data/node-2.sqlite
+      - PATH_TO_DB=/var/data/node-4.sqlite
       - API_HOST_WITH_PORT=0.0.0.0:8083
       - LOCAL_VALIDATOR=3
     networks:

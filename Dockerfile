@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM --platform=linux/arm64 ubuntu:22.04
 WORKDIR /usr/src/app
 RUN apt-get update && apt-get install -y --fix-missing
 RUN apt-get clean && apt-get autoremove -y

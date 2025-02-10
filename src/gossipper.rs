@@ -24,6 +24,7 @@ async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Option
     };
     response
 }
+
 impl Gossipper {
     pub async fn gossip_pending_block(&self, block: Block, last_block_unix_timestamp: u32) {
         for peer in self.peers.clone() {
@@ -84,11 +85,11 @@ impl Gossipper {
             });
         }
     }
+
     pub async fn gossip_consensus_commitment(&self, commitment: ConsensusCommitment) {
         let json_commitment: String = serde_json::to_string(&commitment).unwrap();
         for peer in self.peers.clone() {
             let client_clone = self.client.clone();
-            let peer_clone = peer;
             let json_commitment_clone: String = json_commitment.clone();
             let this_node = env::var("API_HOST_WITH_PORT").unwrap_or("0.0.0.0:8080".to_string());
             if docker_skip_self(&this_node, peer) {
@@ -96,7 +97,7 @@ impl Gossipper {
             };
             tokio::spawn(async move {
                 match client_clone
-                    .post(format!("http://{}{}", &peer_clone, "/commit"))
+                    .post(format!("http://{}{}", &peer, "/commit"))
                     .header("Content-Type", "application/json")
                     .body(json_commitment_clone)
                     .timeout(Duration::from_secs(10))
@@ -109,7 +110,7 @@ impl Gossipper {
                         format_args!(
                             "{} Failed to send Consensus Commitment to peer: {}, {}",
                             "[Warning]".yellow(),
-                            &peer_clone,
+                            &peer,
                             "Proceeding with other peers"
                         )
                     ),
