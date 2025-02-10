@@ -111,13 +111,14 @@ impl Gossipper {
                     .await
                 {
                     Ok(_) => {}
-                    Err(_) => println!(
+                    Err(e) => println!(
                         "{}",
                         format_args!(
-                            "{} Failed to send Consensus Commitment to peer: {}, {}",
+                            "{} Failed to send Consensus Commitment to peer: {}, {}, reason: {}",
                             "[Warning]".yellow(),
                             &peer,
-                            "Proceeding with other peers"
+                            "Proceeding with other peers",
+                            e
                         )
                     ),
                 }
