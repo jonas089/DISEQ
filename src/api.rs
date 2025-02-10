@@ -56,10 +56,10 @@ pub async fn commit(
     success_response
 }
 pub async fn propose(
-    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
+    Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
     let block_state_lock = shared_block_state.lock().await;
@@ -114,10 +114,10 @@ pub async fn propose(
     }
 }
 pub async fn merkle_proof(
-    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
-    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
+    Extension(_): Extension<Arc<RwLock<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(key): Json<Vec<u8>>,
 ) -> String {
     let mut state_lock = shared_state.lock().await;
@@ -186,10 +186,10 @@ pub async fn get_state_root_hash(
     }
 }
 pub async fn get_height(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
+    Extension(_): Extension<Arc<RwLock<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
 ) -> String {
     let block_state_lock = shared_block_state.lock().await;
     let previous_block_height = block_state_lock.current_block_height();
