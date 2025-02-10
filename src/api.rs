@@ -81,34 +81,38 @@ pub async fn propose(
         .clone()
         .expect("Block has not been signed!");
     if let Some(round_winner) = consensus_state_lock.round_winner {
-        let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
-        match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
-            Ok(_) => {
-                let res = handle_block_proposal(
-                    &mut shared_state.write().await,
-                    &mut shared_block_state.write().await,
-                    &mut consensus_state_lock,
-                    &mut proposal,
-                    error_response,
-                )
-                .await;
-                match res {
-                    Some(e) => return e,
-                    None => {}
+        if !block_state_lock.block_exists(proposal.height) {
+            let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
+            match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
+                Ok(_) => {
+                    let res = handle_block_proposal(
+                        &mut shared_state.write().await,
+                        &mut shared_block_state.write().await,
+                        &mut consensus_state_lock,
+                        &mut proposal,
+                        error_response,
+                    )
+                    .await;
+                    match res {
+                        Some(e) => return e,
+                        None => {}
+                    }
+                }
+                Err(_) => {
+                    println!(
+                        "{}",
+                        format_args!(
+                            "{} Invalid Signature for Round Winner, Proposal rejected",
+                            "[Warning]".yellow(),
+                        )
+                    );
+                    return error_response;
                 }
             }
-            Err(_) => {
-                println!(
-                    "{}",
-                    format_args!(
-                        "{} Invalid Signature for Round Winner, Proposal rejected",
-                        "[Warning]".yellow(),
-                    )
-                );
-                return error_response;
-            }
+            "[Ok] Block was processed".to_string()
+        } else {
+            "[Ok] Block was processed".to_string()
         }
-        "[Ok] Block was processed".to_string()
     } else {
         "[Warning] Awaiting consensus evaluation".to_string()
     }

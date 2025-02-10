@@ -10,6 +10,7 @@ use rusqlite::{params, Connection};
 use std::env;
 pub trait SqLiteBlockStore {
     fn setup(&self);
+    fn block_exists(&self, height: u32) -> bool;
     fn trigger_genesis(&mut self, timestamp: Timestamp);
     fn insert_block(&mut self, previous_height: u32, block: Block);
     fn get_block_by_height(&self, height: u32) -> Block;
@@ -29,6 +30,14 @@ impl SqLiteBlockStore for BlockStore {
             [],
         )
         .unwrap();
+    }
+    fn block_exists(&self, height: u32) -> bool {
+        let conn = Connection::open(&self.db_path).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT EXISTS(SELECT 1 FROM blocks WHERE height = ?1)")
+            .unwrap();
+        let exists: bool = stmt.query_row([&height], |row| row.get(0)).unwrap_or(false);
+        exists
     }
     fn current_block_height(&self) -> u32 {
         let conn = Connection::open(&self.db_path).unwrap();
