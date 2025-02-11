@@ -16,7 +16,10 @@ use axum::{
     Extension, Router,
 };
 use colored::*;
-use config::{consensus::ROUND_DURATION, network::PEERS};
+use config::{
+    consensus::{CLEARING_PHASE, ROUND_DURATION},
+    network::PEERS,
+};
 use consensus::logic::{current_round, evaluate_commitment, get_committing_validator};
 use gossipper::send_proposal;
 use k256::ecdsa::{signature::SignerMut, Signature};
@@ -146,10 +149,12 @@ async fn consensus_loop(
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
 
-    // todo: reinitialize only once per round
-    if unix_timestamp <= last_block_unix_timestamp + ROUND_DURATION {
+    let current_round = (unix_timestamp - last_block_unix_timestamp) / ROUND_DURATION;
+    if unix_timestamp
+        <= last_block_unix_timestamp + (current_round * ROUND_DURATION) + CLEARING_PHASE
+    {
         println!(
-            "[Info]: Reinitializing consensus state, difference: {}",
+            "[Info]: Reinitializing consensus state, clearing phase remaining: {}",
             (last_block_unix_timestamp + ROUND_DURATION - unix_timestamp)
         );
         consensus_state_lock.reinitialize();
