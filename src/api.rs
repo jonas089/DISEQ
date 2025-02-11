@@ -73,9 +73,13 @@ pub async fn propose(
     println!("[Info] Received Block Proposal!");
     let maybe_block_lock = shared_block_state.try_lock();
     let maybe_consensus_lock = shared_consensus_state.try_lock();
-    if maybe_block_lock.is_err() || maybe_consensus_lock.is_err() {
-        println!("[Warning] Propose endpoint failed to obtain locks!");
-        return "[Error] Failed to obtain locks".to_string();
+    if maybe_block_lock.is_err() {
+        println!("[Warning] Propose endpoint failed to obtain block lock!");
+        return "[Error] Failed to obtain block lock".to_string();
+    }
+    if maybe_consensus_lock.is_err() {
+        println!("[Warning] Propose endpoint failed to obtain consensus locks!");
+        return "[Error] Failed to obtain consensus lock".to_string();
     }
     let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
     let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
