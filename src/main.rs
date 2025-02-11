@@ -353,7 +353,7 @@ async fn main() {
                     Arc::clone(&shared_consensus_state),
                 )
                 .await;
-                tokio::time::sleep(Duration::from_secs(30)).await;
+                tokio::time::sleep(Duration::from_secs(10)).await;
             }
         }
     });
