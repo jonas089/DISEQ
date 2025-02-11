@@ -68,6 +68,7 @@ pub async fn handle_synchronization_response(
         );
     }
 }
+
 pub async fn handle_block_proposal(
     shared_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, ServerState>,
     block_state_lock: &mut tokio::sync::RwLockWriteGuard<'_, BlockStore>,
