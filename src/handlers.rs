@@ -214,10 +214,13 @@ pub async fn handle_block_proposal(
             peers: PEERS.to_vec(),
             client: reqwest::Client::new(),
         };
-        let _ = gossipper //shared_state_lock
-            //.local_gossipper
-            .gossip_pending_block(proposal.clone(), last_block_unix_timestamp)
-            .await;
+
+        let proposal = proposal.clone();
+        tokio::spawn(async move {
+            let _ = gossipper
+                .gossip_pending_block(proposal, last_block_unix_timestamp)
+                .await;
+        });
     } else {
         println!(
             "{}",
