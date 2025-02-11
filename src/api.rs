@@ -101,13 +101,12 @@ pub async fn propose(
         .clone()
         .expect("Block has not been signed!");
     if let Some(round_winner) = consensus_state_lock.round_winner {
+        drop(consensus_state_lock);
         if !block_state_lock.block_exists(proposal.height) {
+            drop(block_state_lock);
             let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
             match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
                 Ok(_) => {
-                    // drop before await
-                    drop(block_state_lock);
-                    drop(consensus_state_lock);
                     let res = handle_block_proposal(
                         Arc::clone(&shared_state),
                         Arc::clone(&shared_block_state),
@@ -134,9 +133,11 @@ pub async fn propose(
             }
             "[Ok] Block was processed".to_string()
         } else {
+            drop(block_state_lock);
             "[Ok] Block was processed".to_string()
         }
     } else {
+        drop(block_state_lock);
         "[Warning] Awaiting consensus evaluation".to_string()
     }
 }
