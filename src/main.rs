@@ -136,7 +136,7 @@ async fn consensus_loop(
         return;
     }
     let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-    let mut pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
+    let pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
     let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
 
     let last_block_unix_timestamp = block_state_lock
@@ -234,12 +234,20 @@ async fn consensus_loop(
             .find(|&&ref peer| peer != &this_node)
             .cloned()
             .expect("[Error] No valid peer found!");
+        drop(block_state_lock);
+        drop(pool_state_lock);
+        drop(consensus_state_lock);
         let _ = send_proposal(
             reqwest::Client::new(),
             trusted_peer,
             serde_json::to_string(&proposed_block).unwrap(),
         )
         .await;
+
+        let maybe_pool_lock = shared_pool_state.try_lock();
+        let mut pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
+        let maybe_consensus_lock = shared_consensus_state.try_lock();
+        let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to get consensus lock");
         consensus_state_lock.proposed = true;
         pool_state_lock.reinitialize()
     }

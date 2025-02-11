@@ -1,3 +1,5 @@
+use tokio::sync::Mutex;
+extern crate alloc;
 use crate::config::consensus::CONSENSUS_THRESHOLD;
 use crate::config::network::PEERS;
 use crate::gossipper::Gossipper;
@@ -8,6 +10,7 @@ use crate::types::BlockCommitment;
 use crate::types::GenericSignature;
 use crate::{crypto::ecdsa::deserialize_vk, types::Block};
 use crate::{get_current_time, ServerState};
+use alloc::sync::Arc;
 use colored::Colorize;
 use k256::ecdsa::signature::{Signer, Verifier};
 use k256::ecdsa::Signature;
@@ -72,9 +75,9 @@ pub async fn handle_synchronization_response(
 }
 
 pub async fn handle_block_proposal(
-    shared_state_lock: &mut tokio::sync::MutexGuard<'_, ServerState>,
-    block_state_lock: &mut tokio::sync::MutexGuard<'_, BlockStore>,
-    consensus_state_lock: &mut tokio::sync::MutexGuard<'_, InMemoryConsensus>,
+    shared_state: Arc<Mutex<ServerState>>,
+    block_state: Arc<Mutex<BlockStore>>,
+    consensus_state: Arc<Mutex<InMemoryConsensus>>,
     proposal: &mut Block,
     error_response: String,
 ) -> Option<String> {
@@ -82,6 +85,13 @@ pub async fn handle_block_proposal(
     // will refuse this block if previously signed a lower block
     // -> 'lowest' block always wins, both in consensus and synchronization
     // this is the way this sequencer deals with chain splits
+    let maybe_consensus_lock = consensus_state.try_lock();
+    if maybe_consensus_lock.is_err() {
+        println!("[Warning] Proposal handler failed to obtain consensus lock!");
+        return None;
+    }
+    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+
     let early_revert: bool = match &consensus_state_lock.lowest_block {
         Some(v) => {
             if proposal.to_bytes() < v.clone() {
@@ -140,6 +150,20 @@ pub async fn handle_block_proposal(
         "[Info] Commitment count for proposal: {}",
         &commitment_count
     );
+    let maybe_block_lock = block_state.try_lock();
+    if maybe_block_lock.is_err() {
+        println!("[Warning] Proposal handler failed to obtain block lock!");
+        return None;
+    }
+    let mut block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
+
+    let maybe_shared_lock = shared_state.try_lock();
+    if maybe_shared_lock.is_err() {
+        println!("[Warning] Proposal handler failed to obtain shared lock!");
+        return None;
+    }
+    let mut shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
+
     let previous_block_height = block_state_lock.current_block_height() - 1;
     if proposal.height != previous_block_height + 1 {
         return Some(error_response);
@@ -218,11 +242,13 @@ pub async fn handle_block_proposal(
         };
 
         let proposal = proposal.clone();
-        tokio::spawn(async move {
-            let _ = gossipper
-                .gossip_pending_block(proposal, last_block_unix_timestamp)
-                .await;
-        });
+        drop(shared_state_lock);
+        drop(block_state_lock);
+        drop(consensus_state_lock);
+        // awaits the responses from all peers before progressing
+        let _ = gossipper
+            .gossip_pending_block(proposal, last_block_unix_timestamp)
+            .await;
     } else {
         println!(
             "{}",

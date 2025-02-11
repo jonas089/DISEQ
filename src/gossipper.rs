@@ -15,7 +15,6 @@ pub async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Op
         .post(format!("http://{}{}", &peer, "/propose"))
         .header("Content-Type", "application/json")
         .body(json_block)
-        .timeout(Duration::from_secs(30))
         .send()
         .await
     {

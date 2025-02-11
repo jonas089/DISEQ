@@ -78,11 +78,11 @@ pub async fn propose(
         return "[Error] Failed to obtain block lock".to_string();
     }
     if maybe_consensus_lock.is_err() {
-        println!("[Warning] Propose endpoint failed to obtain consensus locks!");
+        println!("[Warning] Propose endpoint failed to obtain consensus lock!");
         return "[Error] Failed to obtain consensus lock".to_string();
     }
     let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+    let consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
 
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
@@ -105,10 +105,13 @@ pub async fn propose(
             let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
             match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
                 Ok(_) => {
+                    // drop before await
+                    drop(block_state_lock);
+                    drop(consensus_state_lock);
                     let res = handle_block_proposal(
-                        &mut shared_state.lock().await,
-                        &mut shared_block_state.lock().await,
-                        &mut consensus_state_lock,
+                        Arc::clone(&shared_state),
+                        Arc::clone(&shared_block_state),
+                        Arc::clone(&shared_consensus_state),
                         &mut proposal,
                         error_response,
                     )
