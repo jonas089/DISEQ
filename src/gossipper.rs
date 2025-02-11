@@ -3,7 +3,6 @@ use crate::{consensus::logic::current_round, types::Block};
 use colored::Colorize;
 use reqwest::{Client, Response};
 use std::{env, time::Duration};
-use tokio::time::sleep;
 pub type Peer = &'static str;
 #[derive(Debug, Clone)]
 pub struct Gossipper {
