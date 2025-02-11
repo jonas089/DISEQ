@@ -60,24 +60,9 @@ async fn synchronization_loop(
 ) {
     // only sync when no prioritized task is running (api, consensus) - falling behind is ok for now
     {
-        let maybe_shared_lock = shared_state.try_lock();
-        let maybe_block_lock = shared_block_state.try_lock();
-        let mut maybe_pool_lock = shared_pool_state.try_lock();
-        let mut maybe_consensus_lock = shared_consensus_state.try_lock();
-        // skip if a lock can't be aquired / if occupied by synch loop
-        if maybe_shared_lock.is_err()
-            || maybe_block_lock.is_err()
-            || maybe_pool_lock.is_err()
-            || maybe_consensus_lock.is_err()
-        {
-            return;
-        }
-        let mut shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
-        let mut block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-        let pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
-        let mut consensus_state_lock =
-            maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+        let mut block_state_lock = shared_block_state.lock().await;
         let next_height = block_state_lock.current_block_height();
+        drop(block_state_lock);
         let gossipper = Gossipper {
             peers: PEERS.to_vec(),
             client: Client::new(),
