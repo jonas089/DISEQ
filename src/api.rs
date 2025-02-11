@@ -62,42 +62,63 @@ pub async fn propose(
     Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
     Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
-    Json(proposal): Json<Block>,
+    Json(mut proposal): Json<Block>,
 ) -> String {
     println!("[Info] Received Block Proposal!");
-
     let block_state_lock = shared_block_state.read().await;
-    let block_exists = block_state_lock.block_exists(proposal.height);
-    drop(block_state_lock);
-
-    let consensus_state_lock = shared_consensus_state.write().await;
-    let round_winner = consensus_state_lock.round_winner.clone();
-    drop(consensus_state_lock);
-
-    if !block_exists {
-        if let Some(round_winner) = round_winner {
-            let block_signature = proposal
-                .signature
-                .clone()
-                .expect("Block has not been signed!");
+    let mut consensus_state_lock = shared_consensus_state.write().await;
+    let last_block_unix_timestamp = block_state_lock
+        .get_block_by_height(block_state_lock.current_block_height() - 1)
+        .timestamp;
+    let error_response = format!("Block was rejected: {:?}", &proposal).to_string();
+    let round = current_round(last_block_unix_timestamp);
+    if proposal.timestamp < last_block_unix_timestamp + ((round - 1) * (ROUND_DURATION)) {
+        println!(
+            "[Warning] Invalid Proposal Timestamp: {}",
+            proposal.timestamp
+        );
+        return error_response;
+    };
+    let block_signature = proposal
+        .signature
+        .clone()
+        .expect("Block has not been signed!");
+    if let Some(round_winner) = consensus_state_lock.round_winner {
+        if !block_state_lock.block_exists(proposal.height) {
             let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
             match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
                 Ok(_) => {
                     let res = handle_block_proposal(
                         &mut shared_state.write().await,
                         &mut shared_block_state.write().await,
-                        &mut shared_consensus_state.write().await,
-                        &mut proposal.clone(),
-                        format!("Block was rejected: {:?}", &proposal),
+                        &mut consensus_state_lock,
+                        &mut proposal,
+                        error_response,
                     )
                     .await;
-                    return res.unwrap_or("[Ok] Block was processed".to_string());
+                    match res {
+                        Some(e) => return e,
+                        None => {}
+                    }
                 }
-                Err(_) => return "[Warning] Invalid Signature for Proposal".to_string(),
+                Err(_) => {
+                    println!(
+                        "{}",
+                        format_args!(
+                            "{} Invalid Signature for Round Winner, Proposal rejected",
+                            "[Warning]".yellow(),
+                        )
+                    );
+                    return error_response;
+                }
             }
+            "[Ok] Block was processed".to_string()
+        } else {
+            "[Ok] Block was processed".to_string()
         }
+    } else {
+        "[Warning] Awaiting consensus evaluation".to_string()
     }
-    "[Warning] Awaiting consensus evaluation".to_string()
 }
 pub async fn merkle_proof(
     Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,

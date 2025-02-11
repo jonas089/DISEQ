@@ -14,7 +14,7 @@ pub async fn send_proposal(client: Client, peer: Peer, json_block: String) -> Op
         .post(format!("http://{}{}", &peer, "/propose"))
         .header("Content-Type", "application/json")
         .body(json_block)
-        //.timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(30))
         .send()
         .await
     {
@@ -83,37 +83,36 @@ impl Gossipper {
             if docker_skip_self(&this_node, peer) {
                 continue;
             };
-            tokio::spawn(async move {
-                match client_clone
-                    .post(format!("http://{}{}", &peer, "/commit"))
-                    .header("Content-Type", "application/json")
-                    .body(json_commitment_clone)
-                    //.timeout(Duration::from_secs(20))
-                    .send()
-                    .await
-                {
-                    Ok(_) => {
-                        println!(
-                            "{}",
-                            format_args!(
-                                "{} Successfully sent consensus commitment to peer: {}",
-                                "[Info]".yellow(),
-                                &peer,
-                            )
-                        );
-                    }
-                    Err(e) => println!(
+
+            match client_clone
+                .post(format!("http://{}{}", &peer, "/commit"))
+                .header("Content-Type", "application/json")
+                .body(json_commitment_clone)
+                .timeout(Duration::from_secs(30))
+                .send()
+                .await
+            {
+                Ok(_) => {
+                    println!(
                         "{}",
                         format_args!(
-                            "{} Failed to send Consensus Commitment to peer: {}, {}, reason: {}",
-                            "[Warning]".yellow(),
+                            "{} Successfully sent consensus commitment to peer: {}",
+                            "[Info]".yellow(),
                             &peer,
-                            "Proceeding with other peers",
-                            e
                         )
-                    ),
+                    );
                 }
-            });
+                Err(e) => println!(
+                    "{}",
+                    format_args!(
+                        "{} Failed to send Consensus Commitment to peer: {}, {}, reason: {}",
+                        "[Warning]".yellow(),
+                        &peer,
+                        "Proceeding with other peers",
+                        e
+                    )
+                ),
+            }
         }
     }
 }

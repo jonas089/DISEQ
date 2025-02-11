@@ -137,6 +137,7 @@ async fn consensus_loop(
         || maybe_pool_lock.is_err()
         || maybe_consensus_lock.is_err()
     {
+        println!("[Warnng] Consensus loop failed to obtain locks!");
         return;
     }
 
