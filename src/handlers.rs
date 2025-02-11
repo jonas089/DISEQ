@@ -21,9 +21,9 @@ use patricia_trie::{
 use reqwest::Response;
 
 pub async fn handle_synchronization_response(
-    shared_state_lock: &mut tokio::sync::MutexGuard<'_, ServerState>,
-    block_state_lock: &mut tokio::sync::MutexGuard<'_, BlockStore>,
-    consensus_state_lock: &mut tokio::sync::MutexGuard<'_, InMemoryConsensus>,
+    shared_state: Arc<Mutex<ServerState>>,
+    block_state: Arc<Mutex<BlockStore>>,
+    consensus_state: Arc<Mutex<InMemoryConsensus>>,
     response: Response,
     next_height: u32,
 ) {
@@ -31,8 +31,10 @@ pub async fn handle_synchronization_response(
     let block_serialized = response.text().await.unwrap();
     if block_serialized != "[Warning] Requested Block that does not exist" {
         let block: Block = serde_json::from_str(&block_serialized).unwrap();
+        let mut block_state_lock = block_state.lock().await;
         block_state_lock.insert_block(next_height, block.clone());
         // insert transactions into the trie
+        let mut shared_state_lock = shared_state.lock().await;
         let mut root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
         let transactions = &block.transactions;
         for transaction in transactions {
@@ -58,6 +60,7 @@ pub async fn handle_synchronization_response(
         shared_state_lock.merkle_trie_root = root_node
             .unwrap_as_root()
             .expect("[Critical] Failed to unwrap as root, this should never happen :(");
+        let mut consensus_state_lock = consensus_state.lock().await;
         consensus_state_lock.reinitialize();
         println!(
             "{}",
