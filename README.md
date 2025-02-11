@@ -2,9 +2,12 @@
 Read the full [Litepaper](https://github.com/jonas089/PoRD/blob/master/whitepaper%2Fsequencer.md)
 
 > [!Warning]
-> The design of this sequencer has not been finalized!
-> This is a research project and hasn't been audited.
-> Use at your own risk.
+> I experimented a lot with Mutex and Rwlock, but
+> now decided that I'll want to use permanent storage 
+> for consensus tasks instead. That'll help prevent 
+> deadlocks moving forward.
+> This is a relatively big task so not sure yet when I'll be done with it.
+> Consider this sequencer a work in progress research project, not production software!
 
 
 # Recommended: Run a local network of 4 Nodes with Docker

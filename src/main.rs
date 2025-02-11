@@ -58,12 +58,12 @@ async fn synchronization_loop(
     shared_pool_state: Arc<Mutex<TransactionPool>>,
     shared_consensus_state: Arc<Mutex<InMemoryConsensus>>,
 ) {
-    // fix consensus first!
-    /*{
-        let maybe_shared_lock = shared_state.try_write();
-        let maybe_block_lock = shared_block_state.try_write();
+    // only sync when no prioritized task is running (api, consensus) - falling behind is ok for now
+    {
+        let maybe_shared_lock = shared_state.try_lock();
+        let maybe_block_lock = shared_block_state.try_lock();
         let mut maybe_pool_lock = shared_pool_state.try_lock();
-        let mut maybe_consensus_lock = shared_consensus_state.try_write();
+        let mut maybe_consensus_lock = shared_consensus_state.try_lock();
         // skip if a lock can't be aquired / if occupied by synch loop
         if maybe_shared_lock.is_err()
             || maybe_block_lock.is_err()
@@ -117,7 +117,7 @@ async fn synchronization_loop(
     #[cfg(not(feature = "local-net"))]
     {
         todo!("Implement mainnet synchronization!");
-    }*/
+    }
 }
 async fn consensus_loop(
     shared_state: Arc<Mutex<ServerState>>,
