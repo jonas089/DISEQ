@@ -148,6 +148,10 @@ async fn consensus_loop(
 
     // todo: reinitialize only once per round
     if unix_timestamp <= last_block_unix_timestamp + ROUND_DURATION {
+        println!(
+            "[Info]: Reinitializing consensus state, difference: {}",
+            (last_block_unix_timestamp + ROUND_DURATION - unix_timestamp)
+        );
         consensus_state_lock.reinitialize();
         return;
     }
