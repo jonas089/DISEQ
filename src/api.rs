@@ -36,8 +36,14 @@ pub async fn commit(
     Json(commitment): Json<ConsensusCommitment>,
 ) -> String {
     println!("[Info] Received Commitment (API)!");
-    let block_state_lock = shared_block_state.lock().await;
-    let mut consensus_state_lock = shared_consensus_state.lock().await;
+    let maybe_block_lock = shared_block_state.try_lock();
+    let maybe_consensus_lock = shared_consensus_state.try_lock();
+    if maybe_block_lock.is_err() || maybe_consensus_lock.is_err() {
+        println!("[Warning] Commit endpoint failed to obtain locks!");
+        return "[Error] Failed to obtain locks".to_string();
+    }
+    let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
+    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
     let success_response = format!("[Ok] Commitment was accepted: {:?}", &commitment).to_string();
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
@@ -65,8 +71,15 @@ pub async fn propose(
     Json(mut proposal): Json<Block>,
 ) -> String {
     println!("[Info] Received Block Proposal!");
-    let block_state_lock = shared_block_state.lock().await;
-    let mut consensus_state_lock = shared_consensus_state.lock().await;
+    let maybe_block_lock = shared_block_state.try_lock();
+    let maybe_consensus_lock = shared_consensus_state.try_lock();
+    if maybe_block_lock.is_err() || maybe_consensus_lock.is_err() {
+        println!("[Warning] Propose endpoint failed to obtain locks!");
+        return "[Error] Failed to obtain locks".to_string();
+    }
+    let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
+    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;

@@ -5,6 +5,7 @@ use reqwest::{Client, Response};
 use std::{env, time::Duration};
 use tokio::time::sleep;
 pub type Peer = &'static str;
+#[derive(Debug, Clone)]
 pub struct Gossipper {
     pub peers: Vec<Peer>,
     pub client: Client,
