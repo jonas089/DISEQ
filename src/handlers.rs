@@ -85,12 +85,27 @@ pub async fn handle_block_proposal(
     // will refuse this block if previously signed a lower block
     // -> 'lowest' block always wins, both in consensus and synchronization
     // this is the way this sequencer deals with chain splits
+
+    let mut block_state_lock = block_state.lock().await;
+    /*if maybe_block_lock.is_err() {
+        println!("[Warning] Proposal handler failed to obtain block lock!");
+        return None;
+    }
+    let mut block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");*/
+
     let mut consensus_state_lock = consensus_state.lock().await;
     /*if maybe_consensus_lock.is_err() {
         println!("[Warning] Proposal handler failed to obtain consensus lock!");
         return None;
     }*/
     //let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
+
+    let mut shared_state_lock = shared_state.lock().await;
+    /*if maybe_shared_lock.is_err() {
+        println!("[Warning] Proposal handler failed to obtain shared lock!");
+        return None;
+    }*/
+    //let mut shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
 
     let early_revert: bool = match &consensus_state_lock.lowest_block {
         Some(v) => {
@@ -150,19 +165,6 @@ pub async fn handle_block_proposal(
         "[Info] Commitment count for proposal: {}",
         &commitment_count
     );
-    let mut block_state_lock = block_state.lock().await;
-    /*if maybe_block_lock.is_err() {
-        println!("[Warning] Proposal handler failed to obtain block lock!");
-        return None;
-    }
-    let mut block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");*/
-
-    let mut shared_state_lock = shared_state.lock().await;
-    /*if maybe_shared_lock.is_err() {
-        println!("[Warning] Proposal handler failed to obtain shared lock!");
-        return None;
-    }*/
-    //let mut shared_state_lock = maybe_shared_lock.expect("Failed to unwrap shared lock");
 
     let previous_block_height = block_state_lock.current_block_height() - 1;
     if proposal.height != previous_block_height + 1 {
