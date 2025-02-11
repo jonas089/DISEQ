@@ -176,6 +176,8 @@ pub async fn handle_block_proposal(
             format_args!("{} Received Valid Block", "[Info]".green())
         );
         block_state_lock.insert_block(proposal.height, proposal.clone());
+        // reinitialize the consensus state
+        consensus_state_lock.reinitialize();
         // insert transactions into the trie
         let mut root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
         for transaction in &proposal.transactions {
