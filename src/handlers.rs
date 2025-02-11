@@ -1,4 +1,6 @@
 use crate::config::consensus::CONSENSUS_THRESHOLD;
+use crate::config::network::PEERS;
+use crate::gossipper::Gossipper;
 use crate::state::server::BlockStore;
 use crate::state::server::InMemoryConsensus;
 use crate::state::server::SqLiteBlockStore;
@@ -208,8 +210,12 @@ pub async fn handle_block_proposal(
             .timestamp;
 
         // todo: spawn a task for this
-        let _ = shared_state_lock
-            .local_gossipper
+        let gossipper = Gossipper {
+            peers: PEERS.to_vec(),
+            client: reqwest::Client::new(),
+        };
+        let _ = gossipper //shared_state_lock
+            //.local_gossipper
             .gossip_pending_block(proposal.clone(), last_block_unix_timestamp)
             .await;
     } else {
