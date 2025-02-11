@@ -55,7 +55,8 @@ async fn synchronization_loop(
     shared_pool_state: Arc<Mutex<TransactionPool>>,
     shared_consensus_state: Arc<RwLock<InMemoryConsensus>>,
 ) {
-    {
+    // fix consensus first!
+    /*{
         let maybe_shared_lock = shared_state.try_write();
         let maybe_block_lock = shared_block_state.try_write();
         let mut maybe_pool_lock = shared_pool_state.try_lock();
@@ -113,7 +114,7 @@ async fn synchronization_loop(
     #[cfg(not(feature = "local-net"))]
     {
         todo!("Implement mainnet synchronization!");
-    }
+    }*/
 }
 async fn consensus_loop(
     shared_state: Arc<RwLock<ServerState>>,
