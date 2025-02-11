@@ -147,12 +147,10 @@ async fn consensus_loop(
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
 
-    if unix_timestamp
-        >= last_block_unix_timestamp + (current_round(last_block_unix_timestamp) * ROUND_DURATION)
+    let rounds_since = (unix_timestamp - last_block_unix_timestamp) / ROUND_DURATION;
+    if unix_timestamp >= last_block_unix_timestamp + rounds_since * ROUND_DURATION
         && unix_timestamp
-            <= last_block_unix_timestamp
-                + (current_round(last_block_unix_timestamp) * ROUND_DURATION)
-                + CLEARING_PHASE
+            <= last_block_unix_timestamp + rounds_since * ROUND_DURATION + CLEARING_PHASE
     {
         println!(
             "[Info]: Reinitializing consensus state, clearing phase remaining: {}",
