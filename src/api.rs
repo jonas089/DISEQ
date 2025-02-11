@@ -60,6 +60,8 @@ pub async fn commit(
             println!("[Info] Winner chosen!");
             consensus_state_lock.round_winner = Some(winner);
         }
+    } else {
+        println!("[Warning] Winner was already chosen, or not re-set!");
     }
     success_response
 }
