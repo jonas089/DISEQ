@@ -207,6 +207,7 @@ pub async fn handle_block_proposal(
             .get_block_by_height(previous_block_height)
             .timestamp;
 
+        // todo: spawn a task for this
         let _ = shared_state_lock
             .local_gossipper
             .gossip_pending_block(proposal.clone(), last_block_unix_timestamp)
