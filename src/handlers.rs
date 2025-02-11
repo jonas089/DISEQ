@@ -78,6 +78,7 @@ pub async fn handle_block_proposal(
     proposal: &mut Block,
     error_response: String,
 ) -> Option<String> {
+    println!("[Info] Handling Block proposal!");
     // will refuse this block if previously signed a lower block
     // -> 'lowest' block always wins, both in consensus and synchronization
     // this is the way this sequencer deals with chain splits
@@ -98,6 +99,7 @@ pub async fn handle_block_proposal(
         }
     };
     if early_revert {
+        println!("[Warning] Block rejected, lower block known!");
         return Some(error_response);
     }
     // sign the block if it has not been signed yet

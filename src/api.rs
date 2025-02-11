@@ -51,6 +51,7 @@ pub async fn commit(
         // todo: check if commitment signature is valid for validator
         if deserialize_vk(&commitment.validator) == validator {
             let winner = evaluate_commitment(commitment, consensus_state_lock.validators.clone());
+            println!("[Info] Winner chosen!");
             consensus_state_lock.round_winner = Some(winner);
         }
     }
@@ -63,7 +64,7 @@ pub async fn propose(
     Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
-    println!("[Info] Received Block Proposal (API)!");
+    println!("[Info] Received Block Proposal!");
     let block_state_lock = shared_block_state.read().await;
     let mut consensus_state_lock = shared_consensus_state.write().await;
     let last_block_unix_timestamp = block_state_lock
