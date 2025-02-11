@@ -14,12 +14,12 @@ use k256::ecdsa::Signature;
 use l2_sequencer::config::consensus::ROUND_DURATION;
 use patricia_trie::store::types::Node;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 pub async fn schedule(
-    Extension(_): Extension<Arc<RwLock<ServerState>>>,
-    Extension(_): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
     Extension(shared_pool_state): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(transaction): Json<Transaction>,
 ) -> String {
     let mut shared_pool_lock = shared_pool_state.lock().await;
@@ -29,15 +29,15 @@ pub async fn schedule(
     success_response
 }
 pub async fn commit(
-    Extension(_): Extension<Arc<RwLock<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(commitment): Json<ConsensusCommitment>,
 ) -> String {
     println!("[Info] Received Commitment (API)!");
-    let block_state_lock = shared_block_state.read().await;
-    let mut consensus_state_lock = shared_consensus_state.write().await;
+    let block_state_lock = shared_block_state.lock().await;
+    let mut consensus_state_lock = shared_consensus_state.lock().await;
     let success_response = format!("[Ok] Commitment was accepted: {:?}", &commitment).to_string();
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
@@ -58,15 +58,15 @@ pub async fn commit(
     success_response
 }
 pub async fn propose(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(shared_consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
     println!("[Info] Received Block Proposal!");
-    let block_state_lock = shared_block_state.read().await;
-    let mut consensus_state_lock = shared_consensus_state.write().await;
+    let block_state_lock = shared_block_state.lock().await;
+    let mut consensus_state_lock = shared_consensus_state.lock().await;
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
@@ -89,8 +89,8 @@ pub async fn propose(
             match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
                 Ok(_) => {
                     let res = handle_block_proposal(
-                        &mut shared_state.write().await,
-                        &mut shared_block_state.write().await,
+                        &mut shared_state.lock().await,
+                        &mut shared_block_state.lock().await,
                         &mut consensus_state_lock,
                         &mut proposal,
                         error_response,
@@ -121,13 +121,13 @@ pub async fn propose(
     }
 }
 pub async fn merkle_proof(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
-    Extension(_): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(key): Json<Vec<u8>>,
 ) -> String {
-    let mut state_lock = shared_state.write().await;
+    let mut state_lock = shared_state.lock().await;
     let trie_root = state_lock.merkle_trie_root.clone();
     // todo: make merkle proof fn accept an immutable trie state instance
     let merkle_proof = patricia_trie::merkle::merkle_proof(
@@ -139,10 +139,10 @@ pub async fn merkle_proof(
     serde_json::to_string(&merkle_proof).unwrap()
 }
 pub async fn get_pool(
-    Extension(_): Extension<Arc<RwLock<ServerState>>>,
-    Extension(_): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
     Extension(pool_state): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
     let pool_state_lock = pool_state.lock().await;
     {
@@ -150,22 +150,22 @@ pub async fn get_pool(
     }
 }
 pub async fn get_commitments(
-    Extension(_): Extension<Arc<RwLock<ServerState>>>,
-    Extension(_): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(consensus_state): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
-    let consensus_state_lock = consensus_state.read().await;
+    let consensus_state_lock = consensus_state.lock().await;
     format!("{:?}", consensus_state_lock.commitments)
 }
 pub async fn get_block(
-    Extension(_): Extension<Arc<RwLock<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Path(height): Path<u32>,
 ) -> String {
-    let block_state_lock = shared_block_state.read().await;
+    let block_state_lock = shared_block_state.lock().await;
     println!(
         "{}",
         format_args!("{} Peer Requested Block #{}", "[Info]".green(), height)
@@ -181,24 +181,24 @@ pub async fn get_block(
     }
 }
 pub async fn get_state_root_hash(
-    Extension(shared_state): Extension<Arc<RwLock<ServerState>>>,
-    Extension(_): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
+    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
-    let shared_state_lock = shared_state.read().await;
+    let shared_state_lock = shared_state.lock().await;
     match serde_json::to_string(&shared_state_lock.merkle_trie_root) {
         Ok(trie_root_json) => trie_root_json,
         Err(e) => e.to_string(),
     }
 }
 pub async fn get_height(
-    Extension(_): Extension<Arc<RwLock<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<RwLock<BlockStore>>>,
+    Extension(_): Extension<Arc<Mutex<ServerState>>>,
+    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
     Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
-    Extension(_): Extension<Arc<RwLock<InMemoryConsensus>>>,
+    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
-    let block_state_lock = shared_block_state.read().await;
+    let block_state_lock = shared_block_state.lock().await;
     let previous_block_height = block_state_lock.current_block_height();
     serde_json::to_string(&previous_block_height).unwrap()
 }
