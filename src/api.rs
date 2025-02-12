@@ -75,17 +75,6 @@ pub async fn propose(
     println!("[Info] Received Block Proposal!");
     let block_state_lock = shared_block_state.lock().await;
     let consensus_state_lock = shared_consensus_state.lock().await;
-    /*if maybe_block_lock.is_err() {
-        println!("[Warning] Propose endpoint failed to obtain block lock!");
-        return "[Error] Failed to obtain block lock".to_string();
-    }
-    if maybe_consensus_lock.is_err() {
-        println!("[Warning] Propose endpoint failed to obtain consensus lock!");
-        return "[Error] Failed to obtain consensus lock".to_string();
-    }*/
-    //let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-    //let consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
-
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;
