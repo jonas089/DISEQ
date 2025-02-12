@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 k256 = "0.13.3"
 rand_core = "0.6.4"
-prover = { git = "https://github.com/jonas089/L2-sequencer-utils" }
-zk-logic = { git = "https://github.com/jonas089/L2-sequencer-utils" }
+prover = { git = "https://github.com/jonas089/zk-vrf-consensus" }
+zk-logic = { git = "https://github.com/jonas089/zk-vrf-consensus" }
 risc0-zkvm = { version = "=1.2.2", default-features = false }
 
 patricia-trie = { git = "https://github.com/jonas089/jonas089-trie" }
