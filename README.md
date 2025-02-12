@@ -9,6 +9,7 @@ Diseq is a distributed sequencer built by [Jonas Pauli](https://www.linkedin.com
 Diseq acts as a distributed alternative to centralized (or decentralized) sequencing. Based on a novel zero knowledge consensus with deterministic validator selection, Diseq can operate with 51% percent of a fixed validator set being active and honest. Messages are added to a mempool and stored in the block once consensus has concluded and sufficiently many signatures from active nodes were collected. Nodes synchronize blocks to keep an immutable record of the message sequence.
 
 Read the full [Litepaper](https://github.com/jonas089/zk-vrf-consensus/tree/master/whitepaper)
+If you are an expert then consider also reading [some context about BFT](https://github.com/jonas089/zk-vrf-consensus/blob/master/whitepaper/byzantine-fault.md).
 
 # Recommended: Run a local network of 4 Nodes with Docker
 I began taking this passion project quite seriously, so I added an SQLite DB to store Blocks and Transactions.
