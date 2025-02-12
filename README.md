@@ -8,7 +8,8 @@ Diseq is a distributed sequencer built by [Jonas Pauli](https://www.linkedin.com
 
 Diseq acts as a distributed alternative to centralized (or decentralized) sequencing. Based on a novel zero knowledge consensus with deterministic validator selection, Diseq can operate with 51% percent of a fixed validator set being active and honest. Messages are added to a mempool and stored in the block once consensus has concluded and sufficiently many signatures from active nodes were collected. Nodes synchronize blocks to keep an immutable record of the message sequence.
 
-Read the full [Litepaper](https://github.com/jonas089/zk-vrf-consensus/tree/master/whitepaper)
+Read the full [Litepaper](https://github.com/jonas089/zk-vrf-consensus/tree/master/whitepaper).
+
 If you are an expert then consider also reading [some context about BFT](https://github.com/jonas089/zk-vrf-consensus/blob/master/whitepaper/byzantine-fault.md).
 
 # Recommended: Run a local network of 4 Nodes with Docker
@@ -47,8 +48,3 @@ To view a Block when running the example setup, request `127.0.0.1:8080/get/bloc
 # Merkle Proofs
 Whenever a Block is stored, all messages in that block are inserted into the custom [Merkle Patricia Trie](https://github.com/jonas089/jonas089-trie).
 For every individual message in the trie a merkle proof can be obtained. See an example for this [here](https://github.com/jonas089/distributed-sequencer/blob/master/tests/api.rs).
-
-> [!NOTE]
-> I plan to support more tries in the future (such as the Ethereum patricia trie). 
-> I based this proof of concept off my own trie because I wanted to have a 
-> project that heavily relies on it, as an incentive to continue working on it.
