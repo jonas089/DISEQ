@@ -1,5 +1,5 @@
 # Distributed Transaction Sequencer
-Read the full [Litepaper](https://github.com/jonas089/PoRD/blob/master/whitepaper%2Fsequencer.md)
+Read the full [Litepaper](https://github.com/jonas089/zk-vrf-consensus/tree/master/whitepaper)
 
 > [!Warning]
 > I experimented a lot with Mutex and Rwlock, but
