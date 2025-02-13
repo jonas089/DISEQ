@@ -23,6 +23,7 @@ use config::{
 use consensus::logic::{current_round, evaluate_commitment, get_committing_validator};
 use gossipper::send_proposal;
 use k256::ecdsa::{signature::SignerMut, Signature};
+use l2_sequencer::initial_print;
 use prover::generate_random_number;
 use reqwest::Client;
 use state::server::{BlockStore, InMemoryConsensus, TransactionPool};
@@ -241,22 +242,7 @@ async fn consensus_loop(
 }
 #[tokio::main]
 async fn main() {
-    println!(
-        "{}\n{}",
-        r#"
-██████╗  ██████╗ ██████╗ ██████╗       ███████╗ ██████╗ 
-██╔══██╗██╔═══██╗██╔══██╗██╔══██╗      ██╔════╝██╔═══██╗
-██████╔╝██║   ██║██████╔╝██║  ██║█████╗███████╗██║   ██║
-██╔═══╝ ██║   ██║██╔══██╗██║  ██║╚════╝╚════██║██║▄▄ ██║
-██║     ╚██████╔╝██║  ██║██████╔╝      ███████║╚██████╔╝
-╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═════╝       ╚══════╝ ╚══▀▀═╝"#
-            .blue()
-            .bold(),
-        "Compact, General Purpose, Semi-Decentralized, Sequencer"
-            .bold()
-            .italic()
-            .magenta()
-    );
+    initial_print();
     let mut block_state = {
         let block_state: BlockStore = BlockStore {
             db_path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),

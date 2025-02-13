@@ -1,4 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use colored::Colorize;
 pub mod config;
 pub mod consensus;
 pub mod crypto;
@@ -11,4 +13,26 @@ pub fn get_current_time() -> u32 {
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards");
     since_the_epoch.as_secs() as u32
+}
+
+pub fn initial_print() {
+    println!(
+        "{}\n{}",
+        r#"                                 
+░▒▓███████▓▒░░▒▓█▓▒░░▒▓███████▓▒░▒▓████████▓▒░▒▓██████▓▒░  
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░ 
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░ 
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓██████▓▒░░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░ 
+░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░ 
+░▒▓███████▓▒░░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░  
+                                               ░▒▓█▓▒░     
+                                                ░▒▓██▓▒░"#
+            .blue()
+            .bold(),
+        "Compact, General Purpose, Distrubed, Message Sequencer"
+            .bold()
+            .italic()
+            .magenta()
+    );
 }
