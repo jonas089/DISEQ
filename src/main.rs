@@ -112,23 +112,9 @@ async fn consensus_loop(
     shared_consensus_state: Arc<Mutex<InMemoryConsensus>>,
 ) {
     let unix_timestamp = get_current_time();
-    /*let block_state_lock = shared_block_state.lock().await;
-    let pool_state_lock = shared_pool_state.lock().await;*/
-
     let (block_state_lock, pool_state_lock) =
         tokio::join!(shared_block_state.lock(), shared_pool_state.lock());
-
     let mut consensus_state_lock = shared_consensus_state.lock().await;
-
-    // skip if a lock can't be aquired / if occupied by synch loop
-    /*if maybe_block_lock.is_err() || maybe_pool_lock.is_err() || maybe_consensus_lock.is_err() {
-            println!("[Warning] Consensus loop failed to obtain locks!");
-            return;
-        }
-        let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-        let pool_state_lock = maybe_pool_lock.expect("Failed to unwrap pool lock");
-        let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
-    */
     let last_block_unix_timestamp = block_state_lock
         .get_block_by_height(block_state_lock.current_block_height() - 1)
         .timestamp;

@@ -1779,7 +1779,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 [[package]]
 name = "patricia-trie"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/jonas089-trie#cec32900ebed9f7ba520f0e52a7982e45bfa444f"
+source = "git+https://github.com/jonas089/jonas089-trie#697b2fe98f4f64746f6c8ef2f167e48fc700731a"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1905,7 +1905,7 @@ dependencies = [
 [[package]]
 name = "prover"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/zk-vrf-consensus#55e0701db97181429bfbd1dd2ef3b46e2604de43"
+source = "git+https://github.com/jonas089/zk-vrf-consensus#7af79f05630e16a7217797c14efc8e00040d0b66"
 dependencies = [
  "rand",
  "risc0-zkvm",
@@ -3545,7 +3545,7 @@ dependencies = [
 [[package]]
 name = "zk-logic"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/zk-vrf-consensus#55e0701db97181429bfbd1dd2ef3b46e2604de43"
+source = "git+https://github.com/jonas089/zk-vrf-consensus#7af79f05630e16a7217797c14efc8e00040d0b66"
 dependencies = [
  "num-bigint",
  "serde",
@@ -3555,7 +3555,7 @@ dependencies = [
 [[package]]
 name = "zk-methods"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/zk-vrf-consensus#55e0701db97181429bfbd1dd2ef3b46e2604de43"
+source = "git+https://github.com/jonas089/zk-vrf-consensus#7af79f05630e16a7217797c14efc8e00040d0b66"
 dependencies = [
  "risc0-build",
 ]
