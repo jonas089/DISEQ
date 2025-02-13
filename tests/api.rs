@@ -56,8 +56,8 @@ mod tests {
             "[Ok] Transaction is being sequenced: Transaction { data: [1, 2, 3, 4, 5], timestamp: 0 }"
         );
         let mut node_trie_root: Option<Root> = None;
-        // wait a maximum of ~ 5 blocks
-        for _180_seconds in 0..5 {
+        // wait a maximum of ~ 10 blocks
+        for _ in 0..10 {
             let trie_root_json = get_state_root_hash(client.clone())
                 .await
                 .text()
@@ -71,7 +71,8 @@ mod tests {
                 }
                 None => {}
             };
-            sleep(Duration::from_secs(5)).await;
+            println!("No Trie Root found, waiting for next block...");
+            sleep(Duration::from_secs(190)).await;
         }
         let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
         leaf.hash();
@@ -102,12 +103,11 @@ mod tests {
     async fn test_schedule_transaction() {
         let client = Client::new();
         let transaction: Transaction = Transaction {
-            data: vec![1, 2, 3, 4, 5],
+            data: vec![1, 2, 3, 4, 6],
             timestamp: 0,
         };
         let transaction_json: String = serde_json::to_string(&transaction).unwrap();
-        // note that currently a transaction may only be submitted to one node
-        // mishandling this can cause the network to crash
+        // note that currently a transaction may only be safely submitted to a single node
         let transaction_response = submit_transaction(client, transaction_json).await;
         assert_eq!(
             transaction_response.text().await.unwrap(),

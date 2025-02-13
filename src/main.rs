@@ -126,7 +126,8 @@ async fn consensus_loop(
     {
         println!(
             "[Info]: Reinitializing consensus state, clearing phase remaining: {}",
-            (last_block_unix_timestamp + ROUND_DURATION - unix_timestamp)
+            (unix_timestamp
+                - (last_block_unix_timestamp + rounds_since * ROUND_DURATION + CLEARING_PHASE))
         );
         consensus_state_lock.reinitialize();
         return;

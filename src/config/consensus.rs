@@ -4,7 +4,7 @@ use k256::ecdsa::{SigningKey, VerifyingKey};
 // time before a new block is created, from a block's timestamp onwards
 // specified in seconds
 pub const CLEARING_PHASE: u32 = 60;
-pub const ROUND_DURATION: u32 = 120;
+pub const ROUND_DURATION: u32 = 120; // total duration CLEARING PHASE + ROUND_DURATION!
 pub const CONSENSUS_THRESHOLD: u32 = 3;
 pub const GOSSIP_PROPOSAL_RETRY_LIMIT_PER_PEER: u32 = 10;
 
