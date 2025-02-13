@@ -3,7 +3,7 @@ use crate::{
         v1_sk_deserialized, v1_vk_deserialized, v2_sk_deserialized, v3_sk_deserialized,
         v3_vk_deserialized, v4_sk_deserialized, v4_vk_deserialized,
     },
-    types::{Block, ConsensusCommitment, Timestamp, Transaction},
+    types::{Block, ConsensusCommitment, Message, Timestamp},
 };
 use k256::ecdsa::{SigningKey, VerifyingKey};
 use rusqlite::{params, Connection};
@@ -78,7 +78,7 @@ impl SqLiteBlockStore for BlockStore {
                 timestamp,
                 height: 0,
                 signature: Some(vec![]),
-                transactions: vec![],
+                messages: vec![],
                 commitments: None,
             },
         )
@@ -86,18 +86,18 @@ impl SqLiteBlockStore for BlockStore {
 }
 
 // note: can be used for other dbs and should therefore be renamed
-pub trait SqLiteTransactionPool {
+pub trait SqLiteMessagePool {
     fn setup(&self);
-    fn insert_transaction(&mut self, transaction: Transaction);
-    fn get_transaction_by_index(&self, index: u32) -> Transaction;
-    fn get_all_transactions(&self) -> Vec<Transaction>;
+    fn insert_message(&mut self, message: Message);
+    fn get_message_by_index(&self, index: u32) -> Message;
+    fn get_all_messages(&self) -> Vec<Message>;
     fn reinitialize(&mut self);
 }
-pub struct TransactionPool {
+pub struct MessagePool {
     pub size: u32,
     pub db_path: String,
 }
-impl SqLiteTransactionPool for TransactionPool {
+impl SqLiteMessagePool for MessagePool {
     fn setup(&self) {
         let conn = Connection::open(&self.db_path).unwrap();
         conn.execute(
@@ -109,43 +109,43 @@ impl SqLiteTransactionPool for TransactionPool {
         )
         .unwrap();
     }
-    fn get_transaction_by_index(&self, index: u32) -> Transaction {
+    fn get_message_by_index(&self, index: u32) -> Message {
         let conn = Connection::open(&self.db_path).unwrap();
         let mut stmt = conn
             .prepare("SELECT tx FROM txns WHERE uid = ?1 LIMIT 1")
             .unwrap();
 
-        let transaction_serialized: Option<Vec<u8>> = stmt
+        let message_serialized: Option<Vec<u8>> = stmt
             .query_row([&index], |row| {
                 let node_serialized: Vec<u8> = row.get(0).unwrap();
                 Ok(Some(node_serialized))
             })
             .unwrap_or(None);
 
-        bincode::deserialize(&transaction_serialized.expect("[Error] Block not found")).unwrap()
+        bincode::deserialize(&message_serialized.expect("[Error] Block not found")).unwrap()
     }
-    fn get_all_transactions(&self) -> Vec<Transaction> {
+    fn get_all_messages(&self) -> Vec<Message> {
         let conn = Connection::open(&self.db_path).unwrap();
         let mut stmt = conn.prepare("SELECT tx FROM txns").unwrap();
-        let transaction_iter = stmt
+        let message_iter = stmt
             .query_map([], |row| {
-                let transaction_blob: Vec<u8> = row.get(0)?;
-                // Deserialize the BLOB back into a Transaction
-                let transaction: Transaction = bincode::deserialize(&transaction_blob).unwrap();
-                Ok(transaction)
+                let message_blob: Vec<u8> = row.get(0)?;
+                // Deserialize the BLOB back into a Message
+                let message: Message = bincode::deserialize(&message_blob).unwrap();
+                Ok(message)
             })
             .unwrap();
-        let mut transactions = Vec::new();
-        for transaction in transaction_iter {
-            transactions.push(transaction.unwrap());
+        let mut messages = Vec::new();
+        for message in message_iter {
+            messages.push(message.unwrap());
         }
-        transactions
+        messages
     }
-    fn insert_transaction(&mut self, transaction: Transaction) {
+    fn insert_message(&mut self, message: Message) {
         let conn = Connection::open(&self.db_path).unwrap();
         conn.execute(
             "INSERT OR REPLACE INTO txns (tx) VALUES (?1)",
-            params![bincode::serialize(&transaction).unwrap()],
+            params![bincode::serialize(&message).unwrap()],
         )
         .unwrap();
         // todo: read size from db

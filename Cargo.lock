@@ -1779,7 +1779,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 [[package]]
 name = "patricia-trie"
 version = "0.1.0"
-source = "git+https://github.com/jonas089/jonas089-trie#697b2fe98f4f64746f6c8ef2f167e48fc700731a"
+source = "git+https://github.com/jonas089/jonas089-trie#a9fb9b029f85f5f36f71bb59284b94996af758fb"
 dependencies = [
  "anyhow",
  "bincode",

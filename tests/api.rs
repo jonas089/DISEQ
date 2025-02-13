@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use l2_sequencer::types::Transaction;
+    use l2_sequencer::types::Message;
     use patricia_trie::{
         merkle::{verify_merkle_proof, MerkleProof},
         store::types::{Hashable, Leaf, Root},
@@ -14,21 +14,21 @@ mod tests {
         l2_sequencer::types::ConsensusCommitment,
     };
 
-    async fn submit_transaction(client: Client, transaction_json: String) -> Response {
+    async fn submit_message(client: Client, message_json: String) -> Response {
         client
             .post("http://127.0.0.1:8080/schedule")
             .header("Content-Type", "application/json")
-            .body(transaction_json.clone())
+            .body(message_json.clone())
             .send()
             .await
             .unwrap()
     }
 
-    async fn request_merkle_proof(client: Client, transaction_key_json: String) -> Response {
+    async fn request_merkle_proof(client: Client, message_key_json: String) -> Response {
         client
             .post("http://127.0.0.1:8080/merkle_proof")
             .header("Content-Type", "application/json")
-            .body(transaction_key_json)
+            .body(message_key_json)
             .send()
             .await
             .unwrap()
@@ -43,17 +43,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn await_transaction_and_verify_merkle_proof() {
+    async fn await_message_and_verify_merkle_proof() {
         let client = Client::new();
-        let transaction: Transaction = Transaction {
+        let message: Message = Message {
             data: vec![1, 2, 3, 4, 5],
             timestamp: 0,
         };
-        let transaction_json: String = serde_json::to_string(&transaction).unwrap();
-        let transaction_response = submit_transaction(client.clone(), transaction_json).await;
+        let message_json: String = serde_json::to_string(&message).unwrap();
+        let message_response = submit_message(client.clone(), message_json).await;
         assert_eq!(
-            transaction_response.text().await.unwrap(),
-            "[Ok] Transaction is being sequenced: Transaction { data: [1, 2, 3, 4, 5], timestamp: 0 }"
+            message_response.text().await.unwrap(),
+            "[Ok] Message is being sequenced: Message { data: [1, 2, 3, 4, 5], timestamp: 0 }"
         );
         let mut node_trie_root: Option<Root> = None;
         // wait a maximum of ~ 10 blocks
@@ -74,7 +74,7 @@ mod tests {
             println!("No Trie Root found, waiting for next block...");
             sleep(Duration::from_secs(190)).await;
         }
-        let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
+        let mut leaf = Leaf::new(Vec::new(), Some(message.data.clone()));
         leaf.hash();
         leaf.key = leaf
             .hash
@@ -84,9 +84,8 @@ mod tests {
             .flat_map(|&byte| (0..8).rev().map(move |i| (byte >> i) & 1))
             .collect();
         leaf.hash();
-        let transaction_key_json = serde_json::to_string(&leaf.key).unwrap();
-        let merkle_proof_response =
-            request_merkle_proof(client.clone(), transaction_key_json).await;
+        let message_key_json = serde_json::to_string(&leaf.key).unwrap();
+        let merkle_proof_response = request_merkle_proof(client.clone(), message_key_json).await;
         let merkle_proof_json = merkle_proof_response.text().await.unwrap();
         let merkle_proof: MerkleProof = serde_json::from_str(&merkle_proof_json).unwrap();
         verify_merkle_proof(
@@ -100,18 +99,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_schedule_transaction() {
+    async fn test_schedule_message() {
         let client = Client::new();
-        let transaction: Transaction = Transaction {
+        let message: Message = Message {
             data: vec![1, 2, 3, 4, 6],
             timestamp: 0,
         };
-        let transaction_json: String = serde_json::to_string(&transaction).unwrap();
-        // note that currently a transaction may only be safely submitted to a single node
-        let transaction_response = submit_transaction(client, transaction_json).await;
+        let message_json: String = serde_json::to_string(&message).unwrap();
+        // note that currently a message may only be safely submitted to a single node
+        let message_response = submit_message(client, message_json).await;
         assert_eq!(
-            transaction_response.text().await.unwrap(),
-            "[Ok] Transaction is being sequenced: Transaction { data: [1, 2, 3, 4, 5], timestamp: 0 }"
+            message_response.text().await.unwrap(),
+            "[Ok] Message is being sequenced: Message { data: [1, 2, 3, 4, 5], timestamp: 0 }"
         );
     }
 

@@ -33,12 +33,12 @@ pub async fn handle_synchronization_response(
         let block: Block = serde_json::from_str(&block_serialized).unwrap();
         let mut block_state_lock = block_state.lock().await;
         block_state_lock.insert_block(next_height, block.clone());
-        // insert transactions into the trie
+        // insert messages into the trie
         let mut shared_state_lock = shared_state.lock().await;
         let mut root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
-        let transactions = &block.transactions;
-        for transaction in transactions {
-            let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
+        let messages = &block.messages;
+        for message in messages {
+            let mut leaf = Leaf::new(Vec::new(), Some(message.data.clone()));
             leaf.hash();
             leaf.key = leaf
                 .hash
@@ -161,10 +161,10 @@ pub async fn handle_block_proposal(
             format_args!("{} Received Valid Block", "[Info]".green())
         );
         block_state_lock.insert_block(proposal.height, proposal.clone());
-        // insert transactions into the trie
+        // insert messages into the trie
         let mut root_node = Node::Root(shared_state_lock.merkle_trie_root.clone());
-        for transaction in &proposal.transactions {
-            let mut leaf = Leaf::new(Vec::new(), Some(transaction.data.clone()));
+        for message in &proposal.messages {
+            let mut leaf = Leaf::new(Vec::new(), Some(message.data.clone()));
             leaf.hash();
             leaf.key = leaf
                 .hash

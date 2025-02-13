@@ -13,8 +13,8 @@ Read the full [Litepaper](https://github.com/jonas089/zk-vrf-consensus/tree/mast
 If you are an expert then consider also reading [some context about BFT](https://github.com/jonas089/zk-vrf-consensus/blob/master/whitepaper/byzantine-fault.md).
 
 # Recommended: Run a local network of 4 Nodes with Docker
-I began taking this passion project quite seriously, so I added an SQLite DB to store Blocks and Transactions.
-Transactions are still read as a single chunk so the txpool for each Block must fit in memory, I do intend to change this.
+I began taking this passion project quite seriously, so I added an SQLite DB to store Blocks and Messages.
+Messages are still read as a single chunk so the txpool for each Block must fit in memory, I do intend to change this.
 
 To run the docker image with 2 nodes that will each have a db e.g. node-1.sqlite, node-2.sqlite where the temporary txpool and all
 finalized Blocks are stored, run:

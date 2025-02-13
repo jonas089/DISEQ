@@ -26,7 +26,7 @@ use k256::ecdsa::{signature::SignerMut, Signature};
 use l2_sequencer::initial_print;
 use prover::generate_random_number;
 use reqwest::Client;
-use state::server::{BlockStore, InMemoryConsensus, TransactionPool};
+use state::server::{BlockStore, InMemoryConsensus, MessagePool};
 use std::{
     env,
     sync::Arc,
@@ -42,7 +42,7 @@ use {
 };
 use {
     patricia_trie::store::{db::sql::TrieDB as MerkleTrieDB, types::Root},
-    state::server::{SqLiteBlockStore, SqLiteTransactionPool},
+    state::server::{SqLiteBlockStore, SqLiteMessagePool},
 };
 
 struct ServerState {
@@ -56,7 +56,7 @@ struct ServerState {
 async fn synchronization_loop(
     shared_state: Arc<Mutex<ServerState>>,
     shared_block_state: Arc<Mutex<BlockStore>>,
-    shared_pool_state: Arc<Mutex<TransactionPool>>,
+    shared_pool_state: Arc<Mutex<MessagePool>>,
     shared_consensus_state: Arc<Mutex<InMemoryConsensus>>,
 ) {
     // only sync when no prioritized task is running (api, consensus) - falling behind is ok for now
@@ -108,7 +108,7 @@ async fn synchronization_loop(
 async fn consensus_loop(
     shared_state: Arc<Mutex<ServerState>>,
     shared_block_state: Arc<Mutex<BlockStore>>,
-    shared_pool_state: Arc<Mutex<TransactionPool>>,
+    shared_pool_state: Arc<Mutex<MessagePool>>,
     shared_consensus_state: Arc<Mutex<InMemoryConsensus>>,
 ) {
     let unix_timestamp = get_current_time();
@@ -184,14 +184,14 @@ async fn consensus_loop(
     }
 
     let proposing_validator = consensus_state_lock.round_winner.unwrap();
-    let transactions = pool_state_lock.get_all_transactions();
+    let messages = pool_state_lock.get_all_messages();
 
     if consensus_state_lock.local_validator == proposing_validator && !consensus_state_lock.proposed
     {
         let mut proposed_block = Block {
             height: previous_block_height + 1,
             signature: None,
-            transactions,
+            messages,
             commitments: None,
             timestamp: unix_timestamp,
         };
@@ -238,8 +238,8 @@ async fn main() {
         block_state
     };
     block_state.trigger_genesis(get_current_time());
-    let pool_state: TransactionPool = {
-        let pool_state: TransactionPool = TransactionPool {
+    let pool_state: MessagePool = {
+        let pool_state: MessagePool = MessagePool {
             size: 0,
             db_path: env::var("PATH_TO_DB").unwrap_or("database.sqlite".to_string()),
         };
@@ -264,7 +264,7 @@ async fn main() {
     }));
 
     let shared_block_state: Arc<Mutex<BlockStore>> = Arc::new(Mutex::new(block_state));
-    let shared_pool_state: Arc<Mutex<TransactionPool>> = Arc::new(Mutex::new(pool_state));
+    let shared_pool_state: Arc<Mutex<MessagePool>> = Arc::new(Mutex::new(pool_state));
     let shared_consensus_state: Arc<Mutex<InMemoryConsensus>> =
         Arc::new(Mutex::new(consensus_state));
 

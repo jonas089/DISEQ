@@ -1,10 +1,10 @@
-use crate::state::server::{SqLiteBlockStore, SqLiteTransactionPool};
+use crate::state::server::{SqLiteBlockStore, SqLiteMessagePool};
 use crate::{
     consensus::logic::{current_round, evaluate_commitment, get_committing_validator},
     crypto::ecdsa::deserialize_vk,
     handlers::handle_block_proposal,
-    state::server::{BlockStore, InMemoryConsensus, TransactionPool},
-    types::{Block, ConsensusCommitment, Transaction},
+    state::server::{BlockStore, InMemoryConsensus, MessagePool},
+    types::{Block, ConsensusCommitment, Message},
     ServerState,
 };
 use axum::{extract::Path, Extension, Json};
@@ -18,20 +18,19 @@ use tokio::sync::Mutex;
 pub async fn schedule(
     Extension(_): Extension<Arc<Mutex<ServerState>>>,
     Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(shared_pool_state): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(shared_pool_state): Extension<Arc<Mutex<MessagePool>>>,
     Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
-    Json(transaction): Json<Transaction>,
+    Json(message): Json<Message>,
 ) -> String {
     let mut shared_pool_lock = shared_pool_state.lock().await;
-    let success_response =
-        format!("[Ok] Transaction is being sequenced: {:?}", &transaction).to_string();
-    shared_pool_lock.insert_transaction(transaction);
+    let success_response = format!("[Ok] Message is being sequenced: {:?}", &message).to_string();
+    shared_pool_lock.insert_message(message);
     success_response
 }
 pub async fn commit(
     Extension(_): Extension<Arc<Mutex<ServerState>>>,
     Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(commitment): Json<ConsensusCommitment>,
 ) -> String {
@@ -68,7 +67,7 @@ pub async fn commit(
 pub async fn propose(
     Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
     Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(mut proposal): Json<Block>,
 ) -> String {
@@ -135,7 +134,7 @@ pub async fn propose(
 pub async fn merkle_proof(
     Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
     Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Json(key): Json<Vec<u8>>,
 ) -> String {
@@ -153,18 +152,18 @@ pub async fn merkle_proof(
 pub async fn get_pool(
     Extension(_): Extension<Arc<Mutex<ServerState>>>,
     Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(pool_state): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(pool_state): Extension<Arc<Mutex<MessagePool>>>,
     Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
     let pool_state_lock = pool_state.lock().await;
     {
-        format!("{:?}", pool_state_lock.get_all_transactions())
+        format!("{:?}", pool_state_lock.get_all_messages())
     }
 }
 pub async fn get_commitments(
     Extension(_): Extension<Arc<Mutex<ServerState>>>,
     Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
     let consensus_state_lock = consensus_state.lock().await;
@@ -173,7 +172,7 @@ pub async fn get_commitments(
 pub async fn get_block(
     Extension(_): Extension<Arc<Mutex<ServerState>>>,
     Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
     Path(height): Path<u32>,
 ) -> String {
@@ -195,7 +194,7 @@ pub async fn get_block(
 pub async fn get_state_root_hash(
     Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
     Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
     let shared_state_lock = shared_state.lock().await;
@@ -207,7 +206,7 @@ pub async fn get_state_root_hash(
 pub async fn get_height(
     Extension(_): Extension<Arc<Mutex<ServerState>>>,
     Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<TransactionPool>>>,
+    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
     Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
 ) -> String {
     let block_state_lock = shared_block_state.lock().await;
