@@ -1,5 +1,7 @@
 ![Diseq](https://github.com/jonas089/DISEQ/blob/master/resources/DISEQ/DISEQ1.jpg)
 
+The brand identity for this project was created by [Imran](https://www.fiverr.com/inbox/imranpiash?email_id=ea459eb250cb1b409eccc60b704e4ea7&email_name=consolidated_messages). Rights have been granted to Jonas Pauli (the developer of this project).
+
 # DISEQ Proof of Concept: Distributed Message Sequencing
 Diseq is a distributed sequencer built by [Jonas Pauli](https://www.linkedin.com/in/jonas-pauli/), a blockchain research engineer from Switzerland.
 
