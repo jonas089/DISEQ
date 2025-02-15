@@ -1,4 +1,4 @@
-![Diseq](https://github.com/jonas089/DISEQ/blob/master/resources/DISEQ/DISEQ%202-01.jpg)
+![Diseq](https://github.com/jonas089/DISEQ/blob/master/resources/DISEQ/DISEQ1.jpg)
 
 # DISEQ Proof of Concept: Distributed Message Sequencing
 Diseq is a distributed sequencer built by [Jonas Pauli](https://www.linkedin.com/in/jonas-pauli/), a blockchain research engineer from Switzerland.

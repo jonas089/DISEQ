@@ -1,4 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    io::Write,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use colored::Colorize;
 pub mod config;
@@ -16,23 +19,25 @@ pub fn get_current_time() -> u32 {
 }
 
 pub fn initial_print() {
+    use viuer::{print_from_file, Config};
+    clear_terminal();
+    let config = Config {
+        width: Some(50), // Set width in characters
+        height: None,    // Auto-scale height
+        ..Default::default()
+    };
+    let path = "./resources/DISEQ/icon-bg.jpg"; // Path to your image
+    print_from_file(path, &config).expect("Failed to display image");
     println!(
-        "{}\n{}",
-        r#"                                 
-░▒▓███████▓▒░░▒▓█▓▒░░▒▓███████▓▒░▒▓████████▓▒░▒▓██████▓▒░  
-░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░░░░░░░▒▓█▓▒░░░░░░░▒▓█▓▒░░▒▓█▓▒░ 
-░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░░░░░░░▒▓█▓▒░░░░░░░▒▓█▓▒░░▒▓█▓▒░ 
-░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓██████▓▒░░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░ 
-░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░░░░░░░▒▓█▓▒░▒▓█▓▒░░░░░░░▒▓█▓▒░░▒▓█▓▒░ 
-░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░░░░░░░▒▓█▓▒░▒▓█▓▒░░░░░░░▒▓█▓▒░░▒▓█▓▒░ 
-░▒▓███████▓▒░░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░  
-                                               ░▒▓█▓▒░     
-                                                ░▒▓██▓▒░"#
-            .blue()
-            .bold(),
+        "{}",
         "Compact, General Purpose, Distrubed, Message Sequencer"
             .bold()
             .italic()
-            .magenta()
+            .blue()
     );
+}
+
+fn clear_terminal() {
+    print!("\x1b[2J\x1b[H");
+    std::io::stdout().flush().unwrap();
 }
