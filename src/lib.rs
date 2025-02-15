@@ -22,15 +22,15 @@ pub fn initial_print() {
     use viuer::{print_from_file, Config};
     clear_terminal();
     let config = Config {
-        width: Some(50), // Set width in characters
-        height: None,    // Auto-scale height
+        width: Some(60),
+        height: None,
         ..Default::default()
     };
     let path = "./resources/DISEQ/icon-bg.jpg"; // Path to your image
     print_from_file(path, &config).expect("Failed to display image");
     println!(
-        "{}",
-        "Compact, General Purpose, Distrubed, Message Sequencer"
+        "\n {} \n",
+        "| WELCOME TO DISEQ - your open source, general purpose, message sequencer |"
             .bold()
             .italic()
             .blue()
