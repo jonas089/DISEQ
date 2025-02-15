@@ -43,7 +43,7 @@ to spawn 2 instances that synchronize blocks and commit to proposals / contribut
 ```rust
         .route("/get/pool", get(get_pool))
         .route("/get/commitments", get(get_commitments))
-        .route("/get/block/:height", get(get_block))
+        .route("/get/block/height", get(get_block))
         .route("/get/state_root_hash", get(state_root_hash))
 ```
 
