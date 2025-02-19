@@ -52,3 +52,5 @@ To view a Block when running the example setup, request `127.0.0.1:8080/get/bloc
 # Merkle Proofs
 Whenever a Block is stored, all messages in that block are inserted into the custom [Merkle Patricia Trie](https://github.com/jonas089/jonas089-trie).
 For every individual message in the trie a merkle proof can be obtained. See an example for this [here](https://github.com/jonas089/distributed-sequencer/blob/master/tests/api.rs).
+
+Copyright Ciphercurve GmbH, 2025
