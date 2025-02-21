@@ -27,6 +27,8 @@ finalized Blocks are stored, run:
 docker compose up
 ```
 
+The docker image has been tested on amd64 ubuntu 22.04 and an M3 Macbook (arm64) with QEMU.
+
 Port forwarding should make the nodes available a `8080` and `8081`. I plan to simulate larger networks in the future but for now it is designed
 to spawn 2 instances that synchronize blocks and commit to proposals / contribute to consensus. The default consensus threshold is `1` - see `config` directory.
 
