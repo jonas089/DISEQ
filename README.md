@@ -1,3 +1,7 @@
+This repo was moved to [Ciphercurve](https://ciphercurve.com) LLC [here](https://github.com/ciphercurve/diseq)
+
+
+
 ![Diseq](https://github.com/jonas089/DISEQ/blob/master/resources/DISEQ/DISEQ1.jpg)
 
 The logos were created by [Imran Piash](https://www.fiverr.com/imranpiash?source=inbox). Rights have been granted to Jonas Pauli (the developer of this project).
