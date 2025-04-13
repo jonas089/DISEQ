@@ -10,7 +10,7 @@ prover = { git = "https://github.com/jonas089/zk-vrf-consensus" }
 zk-logic = { git = "https://github.com/jonas089/zk-vrf-consensus" }
 risc0-zkvm = { version = "=1.2.2", default-features = false }
 
-patricia-trie = { git = "https://github.com/jonas089/jonas089-trie" }
+ciphercurve-trie = { git = "https://github.com/jonas089/ciphercurve-trie" }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 colored = "2.1.0"
