@@ -34,15 +34,15 @@ use std::{
 };
 use tokio::sync::Mutex;
 use types::{Block, ConsensusCommitment};
+use {
+    ciphercurve_trie::store::{db::sql::TrieDB as MerkleTrieDB, types::Root},
+    state::server::{SqLiteBlockStore, SqLiteMessagePool},
+};
 #[allow(unused)]
 use {
     gossipper::{docker_skip_self, Gossipper},
     handlers::handle_synchronization_response,
     reqwest::Response,
-};
-use {
-    patricia_trie::store::{db::sql::TrieDB as MerkleTrieDB, types::Root},
-    state::server::{SqLiteBlockStore, SqLiteMessagePool},
 };
 
 struct ServerState {

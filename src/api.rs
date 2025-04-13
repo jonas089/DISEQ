@@ -8,11 +8,11 @@ use crate::{
     ServerState,
 };
 use axum::{extract::Path, Extension, Json};
+use ciphercurve_trie::store::types::Node;
 use colored::Colorize;
 use k256::ecdsa::signature::Verifier;
 use k256::ecdsa::Signature;
 use l2_sequencer::config::consensus::ROUND_DURATION;
-use patricia_trie::store::types::Node;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 pub async fn schedule(
@@ -141,7 +141,7 @@ pub async fn merkle_proof(
     let mut state_lock = shared_state.lock().await;
     let trie_root = state_lock.merkle_trie_root.clone();
     // todo: make merkle proof fn accept an immutable trie state instance
-    let merkle_proof = patricia_trie::merkle::merkle_proof(
+    let merkle_proof = ciphercurve_trie::merkle::merkle_proof(
         &mut state_lock.merkle_trie_state,
         key,
         Node::Root(trie_root),

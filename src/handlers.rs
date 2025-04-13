@@ -11,13 +11,13 @@ use crate::types::GenericSignature;
 use crate::{crypto::ecdsa::deserialize_vk, types::Block};
 use crate::{get_current_time, ServerState};
 use alloc::sync::Arc;
-use colored::Colorize;
-use k256::ecdsa::signature::{Signer, Verifier};
-use k256::ecdsa::Signature;
-use patricia_trie::{
+use ciphercurve_trie::{
     insert_leaf,
     store::types::{Hashable, Leaf, Node},
 };
+use colored::Colorize;
+use k256::ecdsa::signature::{Signer, Verifier};
+use k256::ecdsa::Signature;
 use reqwest::Response;
 
 pub async fn handle_synchronization_response(

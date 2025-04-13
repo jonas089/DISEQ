@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use l2_sequencer::types::Message;
-    use patricia_trie::{
+    use ciphercurve_trie::{
         merkle::{verify_merkle_proof, MerkleProof},
         store::types::{Hashable, Leaf, Root},
     };
+    use l2_sequencer::types::Message;
     use prover::generate_random_number;
     use reqwest::{Client, Response};
     use std::{env, time::Duration};
