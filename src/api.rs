@@ -1,215 +1,198 @@
-use crate::state::server::{SqLiteBlockStore, SqLiteMessagePool};
-use crate::{
-    consensus::logic::{current_round, evaluate_commitment, get_committing_validator},
-    crypto::ecdsa::deserialize_vk,
-    handlers::handle_block_proposal,
-    state::server::{BlockStore, InMemoryConsensus, MessagePool},
-    types::{Block, ConsensusCommitment, Message},
-    ServerState,
+use crate::get_current_time_ms;
+use crate::gossipper::Gossipper;
+use crate::node::{Node, Outgoing, Received};
+use crate::types::{Hash, Message, Proposal, Vote};
+use axum::{
+    extract::{DefaultBodyLimit, Path, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
 };
-use axum::{extract::Path, Extension, Json};
-use ciphercurve_trie::store::types::Node;
-use colored::Colorize;
-use k256::ecdsa::signature::Verifier;
-use k256::ecdsa::Signature;
-use l2_sequencer::config::consensus::ROUND_DURATION;
+use serde::Serialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-pub async fn schedule(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(shared_pool_state): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
-    Json(message): Json<Message>,
-) -> String {
-    let mut shared_pool_lock = shared_pool_state.lock().await;
-    let success_response = format!("[Ok] Message is being sequenced: {:?}", &message).to_string();
-    shared_pool_lock.insert_message(message);
-    success_response
+
+/// Maximum number of messages returned by one `/get/pool/messages` request.
+pub const POOL_FETCH_LIMIT: usize = 1_000;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub node: Arc<Mutex<Node>>,
+    pub gossip: Gossipper,
 }
-pub async fn commit(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
-    Json(commitment): Json<ConsensusCommitment>,
-) -> String {
-    println!("[Info] Received Commitment (API)!");
-    let maybe_block_lock = shared_block_state.try_lock();
-    let maybe_consensus_lock = shared_consensus_state.try_lock();
-    if maybe_block_lock.is_err() || maybe_consensus_lock.is_err() {
-        println!("[Warning] Commit endpoint failed to obtain locks!");
-        return "[Error] Failed to obtain locks".to_string();
-    }
-    let block_state_lock = maybe_block_lock.expect("Failed to unwrap block lock");
-    let mut consensus_state_lock = maybe_consensus_lock.expect("Failed to unwrap consensus lock");
-    let success_response = format!("[Ok] Commitment was accepted: {:?}", &commitment).to_string();
-    let last_block_unix_timestamp = block_state_lock
-        .get_block_by_height(block_state_lock.current_block_height() - 1)
-        .timestamp;
-    if !consensus_state_lock.round_winner.is_some() {
-        // no round winner found, commitment might be valid
-        let validator = get_committing_validator(
-            last_block_unix_timestamp,
-            consensus_state_lock.validators.clone(),
-        );
-        // todo: check if commitment signature is valid for validator
-        if deserialize_vk(&commitment.validator) == validator {
-            let winner = evaluate_commitment(commitment, consensus_state_lock.validators.clone());
-            println!("[Info] Winner chosen!");
-            consensus_state_lock.round_winner = Some(winner);
-        }
-    } else {
-        println!("[Warning] Winner was already chosen, or not re-set!");
-    }
-    success_response
+
+type ApiResult<T> = Result<T, (StatusCode, String)>;
+
+fn bad_request(e: anyhow::Error) -> (StatusCode, String) {
+    (StatusCode::BAD_REQUEST, format!("[Error] {e:#}"))
 }
-pub async fn propose(
-    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(shared_consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
-    Json(mut proposal): Json<Block>,
-) -> String {
-    println!("[Info] Received Block Proposal!");
-    let block_state_lock = shared_block_state.lock().await;
-    let consensus_state_lock = shared_consensus_state.lock().await;
-    let last_block_unix_timestamp = block_state_lock
-        .get_block_by_height(block_state_lock.current_block_height() - 1)
-        .timestamp;
-    let error_response = format!("Block was rejected: {:?}", &proposal).to_string();
-    let round = current_round(last_block_unix_timestamp);
-    if proposal.timestamp < last_block_unix_timestamp + ((round - 1) * (ROUND_DURATION)) {
-        println!(
-            "[Warning] Invalid Proposal Timestamp: {}",
-            proposal.timestamp
-        );
-        return error_response;
+fn internal(e: anyhow::Error) -> (StatusCode, String) {
+    (StatusCode::INTERNAL_SERVER_ERROR, format!("[Error] {e:#}"))
+}
+
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        // clients
+        .route("/schedule", post(schedule))
+        .route("/merkle_proof", post(merkle_proof))
+        .route("/get/block/:height", get(get_block))
+        .route("/get/height", get(get_height))
+        .route("/get/state_root_hash", get(get_state_root_hash))
+        .route("/get/validators", get(get_validators))
+        .route("/get/pool", get(get_pool))
+        // peers
+        .route("/gossip/message", post(gossip_message))
+        .route("/propose", post(propose))
+        .route("/vote", post(vote))
+        .route("/get/pool/ids", get(get_pool_ids))
+        .route("/get/pool/messages", post(get_pool_messages))
+        .layer(DefaultBodyLimit::max(10_000_000))
+        .with_state(state)
+}
+
+async fn accept_message(state: &AppState, message: &Message) -> ApiResult<Received> {
+    let (received, peers) = {
+        let mut node = state.node.lock().await;
+        let received = node.submit_message(message).map_err(bad_request)?;
+        (received, node.peers().map_err(internal)?)
     };
-    let block_signature = proposal
-        .signature
-        .clone()
-        .expect("Block has not been signed!");
-    if let Some(round_winner) = consensus_state_lock.round_winner {
-        drop(consensus_state_lock);
-        if !block_state_lock.block_exists(proposal.height) {
-            drop(block_state_lock);
-            let signature_deserialized = Signature::from_slice(&block_signature).unwrap();
-            match round_winner.verify(&proposal.to_bytes(), &signature_deserialized) {
-                Ok(_) => {
-                    let res = handle_block_proposal(
-                        Arc::clone(&shared_state),
-                        Arc::clone(&shared_block_state),
-                        Arc::clone(&shared_consensus_state),
-                        &mut proposal,
-                        error_response,
-                    )
-                    .await;
-                    match res {
-                        Some(e) => return e,
-                        None => {}
-                    }
-                }
-                Err(_) => {
-                    println!(
-                        "{}",
-                        format_args!(
-                            "{} Invalid Signature for Round Winner, Proposal rejected",
-                            "[Warning]".yellow(),
-                        )
-                    );
-                    return error_response;
-                }
-            }
-            "[Ok] Block was processed".to_string()
-        } else {
-            drop(block_state_lock);
-            "[Ok] Block was processed".to_string()
-        }
-    } else {
-        drop(block_state_lock);
-        "[Warning] Awaiting consensus evaluation".to_string()
+    if received == Received::New {
+        state.gossip.broadcast(peers, "/gossip/message", message);
+    }
+    Ok(received)
+}
+
+/// Client entry point: adds the message to the local mempool and gossips it to all peers, so
+/// whichever validator wins the next election can include it.
+async fn schedule(
+    State(state): State<AppState>,
+    Json(message): Json<Message>,
+) -> ApiResult<String> {
+    match accept_message(&state, &message).await? {
+        Received::New => Ok(format!("[Ok] Message is being sequenced: {:?}", message)),
+        Received::Duplicate => Ok(format!("[Ok] Message already known: {:?}", message)),
     }
 }
-pub async fn merkle_proof(
-    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
-    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
+
+async fn gossip_message(
+    State(state): State<AppState>,
+    Json(message): Json<Message>,
+) -> ApiResult<&'static str> {
+    accept_message(&state, &message).await?;
+    Ok("[Ok]")
+}
+
+/// Broadcasts what the node produced in reaction to an input (e.g. its own precommit).
+pub fn broadcast_outgoing(gossip: &Gossipper, peers: &[String], outgoing: Vec<Outgoing>) {
+    for item in outgoing {
+        match item {
+            Outgoing::Proposal(p) => gossip.broadcast(peers.to_vec(), "/propose", &p),
+            Outgoing::Vote(v) => gossip.broadcast(peers.to_vec(), "/vote", &v),
+        }
+    }
+}
+
+async fn propose(
+    State(state): State<AppState>,
+    Json(proposal): Json<Proposal>,
+) -> ApiResult<&'static str> {
+    let ((received, outgoing), peers) = {
+        let mut node = state.node.lock().await;
+        let result = node
+            .on_proposal(proposal.clone(), get_current_time_ms())
+            .map_err(bad_request)?;
+        (result, node.peers().map_err(internal)?)
+    };
+    if received == Received::New {
+        state.gossip.broadcast(peers.clone(), "/propose", &proposal);
+    }
+    broadcast_outgoing(&state.gossip, &peers, outgoing);
+    Ok("[Ok] Proposal was processed")
+}
+
+async fn vote(State(state): State<AppState>, Json(vote): Json<Vote>) -> ApiResult<&'static str> {
+    let ((received, outgoing), peers) = {
+        let mut node = state.node.lock().await;
+        let result = node
+            .on_vote(vote.clone(), get_current_time_ms())
+            .map_err(bad_request)?;
+        (result, node.peers().map_err(internal)?)
+    };
+    if received == Received::New {
+        state.gossip.broadcast(peers.clone(), "/vote", &vote);
+    }
+    broadcast_outgoing(&state.gossip, &peers, outgoing);
+    Ok("[Ok] Vote was processed")
+}
+
+async fn merkle_proof(
+    State(state): State<AppState>,
     Json(key): Json<Vec<u8>>,
-) -> String {
-    let mut state_lock = shared_state.lock().await;
-    let trie_root = state_lock.merkle_trie_root.clone();
-    // todo: make merkle proof fn accept an immutable trie state instance
-    let merkle_proof = ciphercurve_trie::merkle::merkle_proof(
-        &mut state_lock.merkle_trie_state,
-        key,
-        Node::Root(trie_root),
-    )
-    .expect("Failed to get merkle proof!");
-    serde_json::to_string(&merkle_proof).unwrap()
+) -> ApiResult<String> {
+    let mut node = state.node.lock().await;
+    let proof = node.merkle_proof(key).map_err(bad_request)?;
+    serde_json::to_string(&proof).map_err(|e| internal(e.into()))
 }
-pub async fn get_pool(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(pool_state): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
-) -> String {
-    let pool_state_lock = pool_state.lock().await;
-    {
-        format!("{:?}", pool_state_lock.get_all_messages())
+
+async fn get_block(State(state): State<AppState>, Path(height): Path<u32>) -> ApiResult<String> {
+    let node = state.node.lock().await;
+    match node.store.block(height).map_err(internal)? {
+        Some(block) => serde_json::to_string(&block).map_err(|e| internal(e.into())),
+        None => Ok("[Warning] Requested Block that does not exist".to_string()),
     }
 }
-pub async fn get_commitments(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(consensus_state): Extension<Arc<Mutex<InMemoryConsensus>>>,
-) -> String {
-    let consensus_state_lock = consensus_state.lock().await;
-    format!("{:?}", consensus_state_lock.commitments)
+
+async fn get_height(State(state): State<AppState>) -> ApiResult<Json<u32>> {
+    let node = state.node.lock().await;
+    Ok(Json(node.store.latest_height().map_err(internal)?))
 }
-pub async fn get_block(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
-    Path(height): Path<u32>,
-) -> String {
-    let block_state_lock = shared_block_state.lock().await;
-    println!(
-        "{}",
-        format_args!("{} Peer Requested Block #{}", "[Info]".green(), height)
-    );
-    let previous_block_height = block_state_lock.current_block_height();
-    if previous_block_height < height + 1 {
-        "[Warning] Requested Block that does not exist".to_string()
-    } else {
-        match serde_json::to_string(&block_state_lock.get_block_by_height(height)) {
-            Ok(block_json) => block_json,
-            Err(e) => e.to_string(),
-        }
-    }
+
+async fn get_state_root_hash(State(state): State<AppState>) -> ApiResult<String> {
+    let node = state.node.lock().await;
+    serde_json::to_string(node.trie_root()).map_err(|e| internal(e.into()))
 }
-pub async fn get_state_root_hash(
-    Extension(shared_state): Extension<Arc<Mutex<ServerState>>>,
-    Extension(_): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
-) -> String {
-    let shared_state_lock = shared_state.lock().await;
-    match serde_json::to_string(&shared_state_lock.merkle_trie_root) {
-        Ok(trie_root_json) => trie_root_json,
-        Err(e) => e.to_string(),
-    }
+
+#[derive(Serialize)]
+struct ValidatorInfo {
+    id: String,
+    vrf_key: String,
+    weight: u64,
+    address: String,
 }
-pub async fn get_height(
-    Extension(_): Extension<Arc<Mutex<ServerState>>>,
-    Extension(shared_block_state): Extension<Arc<Mutex<BlockStore>>>,
-    Extension(_): Extension<Arc<Mutex<MessagePool>>>,
-    Extension(_): Extension<Arc<Mutex<InMemoryConsensus>>>,
-) -> String {
-    let block_state_lock = shared_block_state.lock().await;
-    let previous_block_height = block_state_lock.current_block_height();
-    serde_json::to_string(&previous_block_height).unwrap()
+
+async fn get_validators(State(state): State<AppState>) -> ApiResult<Json<Vec<ValidatorInfo>>> {
+    let node = state.node.lock().await;
+    let (height, _, _) = node.consensus_position();
+    Ok(Json(
+        node.validator_set(height)
+            .iter()
+            .map(|v| ValidatorInfo {
+                id: hex::encode(v.id_bytes()),
+                vrf_key: hex::encode(&v.vrf_key),
+                weight: v.weight,
+                address: v.address.clone(),
+            })
+            .collect(),
+    ))
+}
+
+async fn get_pool(State(state): State<AppState>) -> ApiResult<Json<Vec<Message>>> {
+    let node = state.node.lock().await;
+    Ok(Json(
+        node.store.pool_batch(POOL_FETCH_LIMIT).map_err(internal)?,
+    ))
+}
+
+async fn get_pool_ids(State(state): State<AppState>) -> ApiResult<Json<Vec<Hash>>> {
+    let node = state.node.lock().await;
+    Ok(Json(node.store.pool_ids().map_err(internal)?))
+}
+
+async fn get_pool_messages(
+    State(state): State<AppState>,
+    Json(ids): Json<Vec<Hash>>,
+) -> ApiResult<Json<Vec<Message>>> {
+    let node = state.node.lock().await;
+    let ids = &ids[..ids.len().min(POOL_FETCH_LIMIT)];
+    Ok(Json(node.store.pool_get(ids).map_err(internal)?))
 }

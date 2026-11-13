@@ -90,3 +90,18 @@ fn test_generate_validator_keys_for_basic_e2e_setup() {
         v4_keypair.serialize_vk()
     );
 }
+
+/// Fallible variant for keys received from the network.
+pub fn try_deserialize_vk(vk_serialized: &[u8]) -> anyhow::Result<VerifyingKey> {
+    VerifyingKey::from_sec1_bytes(vk_serialized)
+        .map_err(|_| anyhow::anyhow!("invalid ECDSA public key"))
+}
+
+/// Verifies an ECDSA signature received from the network.
+pub fn verify_signature(vk: &VerifyingKey, payload: &[u8], signature: &[u8]) -> anyhow::Result<()> {
+    use k256::ecdsa::signature::Verifier;
+    let signature =
+        Signature::from_slice(signature).map_err(|_| anyhow::anyhow!("malformed signature"))?;
+    vk.verify(payload, &signature)
+        .map_err(|_| anyhow::anyhow!("invalid signature"))
+}

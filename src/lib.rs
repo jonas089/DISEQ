@@ -4,10 +4,14 @@ use std::{
 };
 
 use colored::Colorize;
+pub mod api;
 pub mod config;
 pub mod consensus;
 pub mod crypto;
 pub mod gossipper;
+pub mod node;
+pub mod runtime;
+pub mod state;
 pub mod types;
 
 pub fn get_current_time() -> u32 {
@@ -18,6 +22,13 @@ pub fn get_current_time() -> u32 {
     since_the_epoch.as_secs() as u32
 }
 
+pub fn get_current_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64
+}
+
 pub fn initial_print() {
     use viuer::{print_from_file, Config};
     clear_terminal();
@@ -26,8 +37,9 @@ pub fn initial_print() {
         height: None,
         ..Default::default()
     };
-    let path = "./resources/DISEQ/icon-bg.jpg"; // Path to your image
-    print_from_file(path, &config).expect("Failed to display image");
+    let path = "./resources/DISEQ/icon-bg.jpg";
+    // the logo is cosmetic, never fail startup over it
+    let _ = print_from_file(path, &config);
     println!(
         "\n {} \n",
         "| WELCOME TO DISEQ - your open source, general purpose, message sequencer |"
@@ -39,5 +51,5 @@ pub fn initial_print() {
 
 fn clear_terminal() {
     print!("\x1b[2J\x1b[H");
-    std::io::stdout().flush().unwrap();
+    let _ = std::io::stdout().flush();
 }

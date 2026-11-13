@@ -1,226 +1,286 @@
-use crate::{
-    config::consensus::{
-        v1_sk_deserialized, v1_vk_deserialized, v2_sk_deserialized, v3_sk_deserialized,
-        v3_vk_deserialized, v4_sk_deserialized, v4_vk_deserialized,
-    },
-    types::{Block, ConsensusCommitment, Message, Timestamp},
-};
-use k256::ecdsa::{SigningKey, VerifyingKey};
-use rusqlite::{params, Connection};
-use std::env;
-pub trait SqLiteBlockStore {
-    fn setup(&self);
-    fn block_exists(&self, height: u32) -> bool;
-    fn trigger_genesis(&mut self, timestamp: Timestamp);
-    fn insert_block(&mut self, previous_height: u32, block: Block);
-    fn get_block_by_height(&self, height: u32) -> Block;
-    fn current_block_height(&self) -> u32;
-}
-pub struct BlockStore {
+//! SQLite persistence: committed blocks, the committed-message index, the mempool and the
+//! latest Merkle trie root. All tables live in one database file.
+use crate::types::{Block, Hash, Message};
+use anyhow::{Context, Result};
+use ciphercurve_trie::store::types::Root;
+use rusqlite::{params, Connection, OptionalExtension};
+
+pub struct Store {
     pub db_path: String,
 }
-impl SqLiteBlockStore for BlockStore {
-    fn setup(&self) {
-        let conn = Connection::open(&self.db_path).unwrap();
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS blocks (
-            height BLOB PRIMARY KEY,
-            block BLOB NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-    }
-    fn block_exists(&self, height: u32) -> bool {
-        let conn = Connection::open(&self.db_path).unwrap();
-        let mut stmt = conn
-            .prepare("SELECT EXISTS(SELECT 1 FROM blocks WHERE height = ?1)")
-            .unwrap();
-        let exists: bool = stmt.query_row([&height], |row| row.get(0)).unwrap_or(false);
-        exists
-    }
-    fn current_block_height(&self) -> u32 {
-        let conn = Connection::open(&self.db_path).unwrap();
-        let mut stmt = conn.prepare("SELECT COUNT(*) FROM blocks").unwrap();
-        let mut rows = stmt.query([]).unwrap();
-        let count: usize = rows.next().unwrap().unwrap().get(0).unwrap();
-        count as u32
-    }
-    fn get_block_by_height(&self, height: u32) -> Block {
-        let conn = Connection::open(&self.db_path).unwrap();
-        let mut stmt = conn
-            .prepare("SELECT block FROM blocks WHERE height = ?1 LIMIT 1")
-            .unwrap();
-        let block_serialized: Option<Vec<u8>> = stmt
-            .query_row([&height], |row| {
-                let block_serialized: Vec<u8> = row.get(0).unwrap();
-                Ok(Some(block_serialized))
-            })
-            .unwrap_or(None);
-        // todo: don't expect this
-        bincode::deserialize(
-            &block_serialized.expect(&format!("[Error] Block not found: {}", &height)),
-        )
-        .unwrap()
-    }
-    fn insert_block(&mut self, height: u32, block: Block) {
-        let conn = Connection::open(&self.db_path).unwrap();
-        conn.execute(
-            "INSERT OR REPLACE INTO blocks (height, block) VALUES (?1, ?2)",
-            params![height, bincode::serialize(&block).unwrap()],
-        )
-        .unwrap();
-    }
-    fn trigger_genesis(&mut self, timestamp: Timestamp) {
-        self.insert_block(
-            0u32,
-            Block {
-                timestamp,
-                height: 0,
-                signature: Some(vec![]),
-                messages: vec![],
-                commitments: None,
-            },
-        )
-    }
-}
 
-// note: can be used for other dbs and should therefore be renamed
-pub trait SqLiteMessagePool {
-    fn setup(&self);
-    fn insert_message(&mut self, message: Message);
-    fn get_message_by_index(&self, index: u32) -> Message;
-    fn get_all_messages(&self) -> Vec<Message>;
-    fn reinitialize(&mut self);
-}
-pub struct MessagePool {
-    pub size: u32,
-    pub db_path: String,
-}
-impl SqLiteMessagePool for MessagePool {
-    fn setup(&self) {
-        let conn = Connection::open(&self.db_path).unwrap();
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS txns (
-                uid BLOB PRIMARY KEY,
-                tx BLOB NOT NULL
-            )",
-            [],
-        )
-        .unwrap();
-    }
-    fn get_message_by_index(&self, index: u32) -> Message {
-        let conn = Connection::open(&self.db_path).unwrap();
-        let mut stmt = conn
-            .prepare("SELECT tx FROM txns WHERE uid = ?1 LIMIT 1")
-            .unwrap();
-
-        let message_serialized: Option<Vec<u8>> = stmt
-            .query_row([&index], |row| {
-                let node_serialized: Vec<u8> = row.get(0).unwrap();
-                Ok(Some(node_serialized))
-            })
-            .unwrap_or(None);
-
-        bincode::deserialize(&message_serialized.expect("[Error] Block not found")).unwrap()
-    }
-    fn get_all_messages(&self) -> Vec<Message> {
-        let conn = Connection::open(&self.db_path).unwrap();
-        let mut stmt = conn.prepare("SELECT tx FROM txns").unwrap();
-        let message_iter = stmt
-            .query_map([], |row| {
-                let message_blob: Vec<u8> = row.get(0)?;
-                // Deserialize the BLOB back into a Message
-                let message: Message = bincode::deserialize(&message_blob).unwrap();
-                Ok(message)
-            })
-            .unwrap();
-        let mut messages = Vec::new();
-        for message in message_iter {
-            messages.push(message.unwrap());
-        }
-        messages
-    }
-    fn insert_message(&mut self, message: Message) {
-        let conn = Connection::open(&self.db_path).unwrap();
-        conn.execute(
-            "INSERT OR REPLACE INTO txns (tx) VALUES (?1)",
-            params![bincode::serialize(&message).unwrap()],
-        )
-        .unwrap();
-        // todo: read size from db
-        self.size += 1;
-    }
-    fn reinitialize(&mut self) {
-        // todo: remove when reading size from db
-        self.size = 0;
-        let conn = Connection::open(&self.db_path).unwrap();
-        conn.execute("DROP TABLE IF EXISTS txns", []).unwrap();
-        self.setup();
-    }
-}
-
-pub struct InMemoryConsensus {
-    pub validators: Vec<VerifyingKey>,
-    pub local_validator: VerifyingKey,
-    pub local_signing_key: SigningKey,
-    pub commitments: Vec<Vec<ConsensusCommitment>>,
-    pub round_winner: Option<VerifyingKey>,
-    pub proposed: bool,
-    pub committed: bool,
-    pub signed: bool,
-    pub lowest_block: Option<Vec<u8>>,
-}
-impl InMemoryConsensus {
-    #[allow(unused)]
-    pub fn empty() -> Self {
-        Self {
-            validators: Vec::new(),
-            local_validator: v1_vk_deserialized(),
-            local_signing_key: v2_sk_deserialized(),
-            commitments: Vec::new(),
-            round_winner: None,
-            proposed: false,
-            committed: false,
-            signed: false,
-            lowest_block: None,
-        }
-    }
-    pub fn empty_with_default_validators() -> InMemoryConsensus {
-        use crate::config::consensus::v2_vk_deserialized;
-        let local_validator_test_id = env::var("LOCAL_VALIDATOR").unwrap_or(0.to_string());
-        let local_validator = if local_validator_test_id == "0" {
-            (v1_sk_deserialized(), v1_vk_deserialized())
-        } else if local_validator_test_id == "1" {
-            (v2_sk_deserialized(), v2_vk_deserialized())
-        } else if local_validator_test_id == "2" {
-            (v3_sk_deserialized(), v3_vk_deserialized())
-        } else {
-            (v4_sk_deserialized(), v4_vk_deserialized())
+impl Store {
+    pub fn open(db_path: &str) -> Result<Self> {
+        let store = Store {
+            db_path: db_path.to_string(),
         };
-        Self {
-            validators: vec![
-                v1_vk_deserialized(),
-                v2_vk_deserialized(),
-                v3_vk_deserialized(),
-                v4_vk_deserialized(),
+        store.conn()?.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             CREATE TABLE IF NOT EXISTS blocks (
+                 height INTEGER PRIMARY KEY,
+                 hash BLOB NOT NULL,
+                 block BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS committed_messages (
+                 id BLOB PRIMARY KEY,
+                 height INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS mempool (
+                 seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                 id BLOB NOT NULL UNIQUE,
+                 message BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS meta (
+                 key TEXT PRIMARY KEY,
+                 value BLOB NOT NULL
+             );",
+        )?;
+        Ok(store)
+    }
+
+    fn conn(&self) -> Result<Connection> {
+        Connection::open(&self.db_path).context("failed to open database")
+    }
+
+    // ---- blocks -------------------------------------------------------------------------
+
+    /// Inserts genesis if the chain is empty; fails if a different genesis is stored.
+    pub fn init_genesis(&self, genesis: &Block) -> Result<()> {
+        match self.block(0)? {
+            Some(existing) => anyhow::ensure!(
+                existing.hash() == genesis.hash(),
+                "database contains a different genesis block"
+            ),
+            None => {
+                self.conn()?.execute(
+                    "INSERT INTO blocks (height, hash, block) VALUES (0, ?1, ?2)",
+                    params![genesis.hash().to_vec(), bincode::serialize(genesis)?],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn latest_height(&self) -> Result<u32> {
+        Ok(self
+            .conn()?
+            .query_row("SELECT MAX(height) FROM blocks", [], |r| r.get::<_, u32>(0))?)
+    }
+
+    pub fn block(&self, height: u32) -> Result<Option<Block>> {
+        let bytes: Option<Vec<u8>> = self
+            .conn()?
+            .query_row(
+                "SELECT block FROM blocks WHERE height = ?1",
+                [height],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(match bytes {
+            Some(b) => Some(bincode::deserialize(&b)?),
+            None => None,
+        })
+    }
+
+    pub fn latest_block(&self) -> Result<Block> {
+        let height = self.latest_height()?;
+        self.block(height)?.context("latest block missing")
+    }
+
+    /// Atomically stores a committed block, indexes its messages, removes them from the
+    /// mempool and records the new trie root.
+    pub fn commit_block(&self, block: &Block, trie_root: &Root) -> Result<()> {
+        let mut conn = self.conn()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO blocks (height, hash, block) VALUES (?1, ?2, ?3)",
+            params![
+                block.height,
+                block.hash().to_vec(),
+                bincode::serialize(block)?
             ],
-            local_validator: local_validator.1,
-            local_signing_key: local_validator.0,
-            commitments: Vec::new(),
-            round_winner: None,
-            proposed: false,
-            committed: false,
-            signed: false,
-            lowest_block: None,
+        )?;
+        for message in &block.messages {
+            let id = message.id().to_vec();
+            tx.execute(
+                "INSERT INTO committed_messages (id, height) VALUES (?1, ?2)",
+                params![id, block.height],
+            )?;
+            tx.execute("DELETE FROM mempool WHERE id = ?1", params![id])?;
+        }
+        tx.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('trie_root', ?1)",
+            params![bincode::serialize(trie_root)?],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn is_committed(&self, id: &Hash) -> Result<bool> {
+        Ok(self
+            .conn()?
+            .query_row(
+                "SELECT 1 FROM committed_messages WHERE id = ?1",
+                [id.to_vec()],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    pub fn trie_root(&self) -> Result<Root> {
+        let bytes: Option<Vec<u8>> = self
+            .conn()?
+            .query_row("SELECT value FROM meta WHERE key = 'trie_root'", [], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        Ok(match bytes {
+            Some(b) => bincode::deserialize(&b)?,
+            None => Root::empty(),
+        })
+    }
+
+    // ---- consensus state (survives restarts so a validator never double-signs) -----------
+
+    pub fn meta_get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self
+            .conn()?
+            .query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0))
+            .optional()?)
+    }
+
+    pub fn meta_put(&self, key: &str, value: &[u8]) -> Result<()> {
+        self.conn()?.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    // ---- mempool ------------------------------------------------------------------------
+
+    /// Adds a message unless it is already pooled or committed. Returns whether it was new.
+    pub fn pool_insert(&self, message: &Message, max_pool_size: usize) -> Result<bool> {
+        let id = message.id();
+        if self.is_committed(&id)? {
+            return Ok(false);
+        }
+        let conn = self.conn()?;
+        let size: usize = conn.query_row("SELECT COUNT(*) FROM mempool", [], |r| r.get(0))?;
+        let exists = conn
+            .query_row("SELECT 1 FROM mempool WHERE id = ?1", [id.to_vec()], |_| {
+                Ok(())
+            })
+            .optional()?
+            .is_some();
+        if exists {
+            return Ok(false);
+        }
+        anyhow::ensure!(size < max_pool_size, "mempool is full");
+        conn.execute(
+            "INSERT OR IGNORE INTO mempool (id, message) VALUES (?1, ?2)",
+            params![id.to_vec(), bincode::serialize(message)?],
+        )?;
+        Ok(conn.changes() == 1)
+    }
+
+    /// Oldest-first batch of pooled messages (FIFO sequencing).
+    pub fn pool_batch(&self, limit: usize) -> Result<Vec<Message>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare("SELECT message FROM mempool ORDER BY seq LIMIT ?1")?;
+        let rows = stmt.query_map([limit as i64], |r| r.get::<_, Vec<u8>>(0))?;
+        rows.map(|r| Ok(bincode::deserialize(&r?)?)).collect()
+    }
+
+    pub fn pool_ids(&self) -> Result<Vec<Hash>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare("SELECT id FROM mempool ORDER BY seq")?;
+        let rows = stmt.query_map([], |r| r.get::<_, Vec<u8>>(0))?;
+        rows.map(|r| {
+            r?.try_into()
+                .map_err(|_| anyhow::anyhow!("malformed message id"))
+        })
+        .collect()
+    }
+
+    pub fn pool_get(&self, ids: &[Hash]) -> Result<Vec<Message>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare("SELECT message FROM mempool WHERE id = ?1")?;
+        let mut messages = Vec::new();
+        for id in ids {
+            if let Some(bytes) = stmt
+                .query_row([id.to_vec()], |r| r.get::<_, Vec<u8>>(0))
+                .optional()?
+            {
+                messages.push(bincode::deserialize(&bytes)?);
+            }
+        }
+        Ok(messages)
+    }
+
+    pub fn pool_contains(&self, id: &Hash) -> Result<bool> {
+        Ok(self
+            .conn()?
+            .query_row("SELECT 1 FROM mempool WHERE id = ?1", [id.to_vec()], |_| {
+                Ok(())
+            })
+            .optional()?
+            .is_some())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store() -> (tempfile::TempDir, Store) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("db.sqlite");
+        let store = Store::open(path.to_str().unwrap()).unwrap();
+        store.init_genesis(&Block::genesis(1)).unwrap();
+        (dir, store)
+    }
+
+    fn msg(data: u8) -> Message {
+        Message {
+            data: vec![data],
+            timestamp: 0,
         }
     }
-    pub fn reinitialize(&mut self) {
-        self.commitments = Vec::new();
-        self.round_winner = None;
-        self.proposed = false;
-        self.committed = false;
-        self.signed = false;
-        self.lowest_block = None;
+
+    #[test]
+    fn mempool_deduplicates_and_respects_commits() {
+        let (_dir, store) = store();
+        assert!(store.pool_insert(&msg(1), 10).unwrap());
+        assert!(!store.pool_insert(&msg(1), 10).unwrap());
+        // same payload, different timestamp: same id
+        assert!(!store
+            .pool_insert(
+                &Message {
+                    data: vec![1],
+                    timestamp: 5
+                },
+                10
+            )
+            .unwrap());
+        assert!(store.pool_insert(&msg(2), 10).unwrap());
+        assert_eq!(store.pool_batch(10).unwrap(), vec![msg(1), msg(2)]);
+
+        let mut block = Block::genesis(1);
+        block.height = 1;
+        block.messages = vec![msg(1)];
+        store.commit_block(&block, &Root::empty()).unwrap();
+        assert_eq!(store.pool_batch(10).unwrap(), vec![msg(2)]);
+        // a committed message can never re-enter the pool
+        assert!(!store.pool_insert(&msg(1), 10).unwrap());
+        assert_eq!(store.latest_height().unwrap(), 1);
+    }
+
+    #[test]
+    fn mempool_is_bounded() {
+        let (_dir, store) = store();
+        assert!(store.pool_insert(&msg(1), 1).unwrap());
+        assert!(store.pool_insert(&msg(2), 1).is_err());
     }
 }

@@ -1,3 +1,5 @@
+//! Tests against a running docker network (`docker compose up`), hence ignored by default:
+//! `cargo test --test api -- --ignored`. See tests/e2e.rs for the self-contained version.
 #[cfg(test)]
 mod tests {
     use ciphercurve_trie::{
@@ -5,14 +7,9 @@ mod tests {
         store::types::{Hashable, Leaf, Root},
     };
     use l2_sequencer::types::Message;
-    use prover::generate_random_number;
     use reqwest::{Client, Response};
-    use std::{env, time::Duration};
+    use std::time::Duration;
     use tokio::time::sleep;
-    use {
-        l2_sequencer::config::network::PEERS, l2_sequencer::gossipper::Gossipper,
-        l2_sequencer::types::ConsensusCommitment,
-    };
 
     async fn submit_message(client: Client, message_json: String) -> Response {
         client
@@ -43,6 +40,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires the docker network"]
     async fn await_message_and_verify_merkle_proof() {
         let client = Client::new();
         let message: Message = Message {
@@ -64,15 +62,12 @@ mod tests {
                 .await
                 .unwrap();
             let trie_root: Root = serde_json::from_str(&trie_root_json).unwrap();
-            match trie_root.hash.clone() {
-                Some(_) => {
-                    node_trie_root = Some(trie_root.clone());
-                    break;
-                }
-                None => {}
+            if trie_root.hash.is_some() {
+                node_trie_root = Some(trie_root.clone());
+                break;
             };
             println!("No Trie Root found, waiting for next block...");
-            sleep(Duration::from_secs(190)).await;
+            sleep(Duration::from_secs(5)).await;
         }
         let mut leaf = Leaf::new(Vec::new(), Some(message.data.clone()));
         leaf.hash();
@@ -99,6 +94,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires the docker network"]
     async fn test_schedule_message() {
         let client = Client::new();
         let message: Message = Message {
@@ -110,24 +106,7 @@ mod tests {
         let message_response = submit_message(client, message_json).await;
         assert_eq!(
             message_response.text().await.unwrap(),
-            "[Ok] Message is being sequenced: Message { data: [1, 2, 3, 4, 5], timestamp: 0 }"
+            "[Ok] Message is being sequenced: Message { data: [1, 2, 3, 4, 6], timestamp: 0 }"
         );
-    }
-
-    #[tokio::test]
-    async fn test_commit() {
-        let receipt = generate_random_number(vec![0; 32], vec![0; 32]);
-        let consensus_commitment: ConsensusCommitment = ConsensusCommitment {
-            validator: vec![0; 32],
-            receipt,
-        };
-        let gossipper = Gossipper {
-            peers: PEERS.to_vec(),
-            client: Client::new(),
-        };
-        env::set_var("API_HOST_WITH_PORT", "127.0.0.1:8081");
-        gossipper
-            .gossip_consensus_commitment(consensus_commitment)
-            .await;
     }
 }
