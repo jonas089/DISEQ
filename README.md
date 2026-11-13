@@ -20,16 +20,6 @@ and the validator set rules can be swapped for proof of stake or anything else.
 - **Mempool:** messages submitted to any node are gossiped to all nodes and pulled through anti-entropy, so whichever validator wins the election sequences them.
 - **Proofs:** every committed message gets a Merkle inclusion proof against the state root.
 
-> [!NOTE]
-> **Design history.** Earlier versions used a "ZK VRF": a round-robin validator published a risc0 proof of
-> `sha256(pubkey || height || seed)` that picked the proposer. That design had three flaws:
-> - The seed was chosen freely, so the committer could grind it and pick any proposer.
-> - Receipts were never verified, so anyone could forge the result.
-> - The proposer was public before it proposed, so it could be targeted with DoS.
->
-> Finality was "lowest block hash wins", which is not finality. The current design replaces both parts with well-understood constructions.
-> The original litepaper is kept [here](https://github.com/jonas089/zk-vrf-consensus/tree/master/whitepaper) for reference.
-
 # Consensus
 
 Each height runs rounds of Tendermint ([Buchman, Kwon, Milosevic 2018](https://arxiv.org/abs/1807.04938)), with the proposer chosen by VRF:

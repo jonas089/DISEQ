@@ -70,8 +70,8 @@ mod tests {
 
     #[test]
     fn output_is_unique_per_key_and_input() {
-        // Unlike the removed ZK construction, the prover has no free seed: re-evaluating
-        // gives the same output, so it cannot grind for a favourable result.
+        // The prover has no free input: re-evaluating gives the same output, so it cannot
+        // grind for a favourable result.
         let kp = VrfKeypair::from_seed(&[7; 32]);
         assert_eq!(kp.prove(b"input").0, kp.prove(b"input").0);
         assert_ne!(kp.prove(b"input").0, kp.prove(b"other").0);
