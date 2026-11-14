@@ -91,47 +91,81 @@ pub struct Candidate {
     pub stake: u64,
 }
 
-/// Reference proof-of-stake policy with epoch based rotation.
+/// Where stake comes from: a genesis table, block rewards, an L1 staking contract, ...
 ///
-/// Every `epoch_length` blocks the top `max_validators` candidates by stake become the active
-/// set, weighted by stake. The set for epoch `e` is computed from the stake table at the end
-/// of epoch `e - 1`, so a node always knows the set for the height it is working on.
-/// How stake changes is left to `apply_block`: block rewards, deposits bridged from an L1
-/// contract, slashing, etc. Policies see ordered blocks (batch certificates), not message
-/// payloads: payloads are resolved after ordering. A payload-driven rule (staking messages)
-/// must be fed from the sequenced output and take effect with at least one epoch of delay.
-pub struct EpochStakePolicy<F> {
-    pub epoch_length: u32,
-    pub max_validators: usize,
-    candidates: BTreeMap<GenericPublicKey, Candidate>,
-    /// Active set per epoch.
-    epochs: BTreeMap<u32, ValidatorSet>,
-    apply_block: F,
+/// Must be deterministic: every honest node that committed the same chain must get the same
+/// answer. With on-chain stake, read the contract at a finalized L1 block that the chain
+/// itself references (an anchor in the epoch's last block), never at "latest".
+pub trait StakeSource: Send + Sync + 'static {
+    /// Called for every committed block, in height order (also when replaying on startup).
+    /// For sources that track chain contents; most sources ignore it.
+    fn on_block_committed(&mut self, _block: &Block) {}
+    /// Candidates and their stake as of `epoch_end`, the last block of an epoch. The result
+    /// becomes the next epoch's validator set.
+    fn stakes(&mut self, epoch_end: &Block) -> Vec<Candidate>;
 }
 
-impl<F> EpochStakePolicy<F>
-where
-    F: FnMut(&Block, &mut BTreeMap<GenericPublicKey, Candidate>) + Send + Sync + 'static,
-{
+/// How stake turns into voting weight, applied to the selected set as a whole so a rule can
+/// depend on the total (e.g. capping any one validator's share). Same order as the input;
+/// a weight of 0 removes the validator.
+pub trait WeightFn: Send + Sync + 'static {
+    fn weights(&self, stakes: &[u64]) -> Vec<u64>;
+}
+
+/// Weight equals stake.
+pub struct Linear;
+impl WeightFn for Linear {
+    fn weights(&self, stakes: &[u64]) -> Vec<u64> {
+        stakes.to_vec()
+    }
+}
+
+/// Weight is the integer square root of stake: dampens large stakers.
+pub struct SquareRoot;
+impl WeightFn for SquareRoot {
+    fn weights(&self, stakes: &[u64]) -> Vec<u64> {
+        stakes.iter().map(|s| s.isqrt()).collect()
+    }
+}
+
+/// Proof-of-stake policy with epoch based rotation.
+///
+/// Every `epoch_length` blocks the top `max_validators` candidates by stake (from the
+/// [`StakeSource`]) become the active set, weighted by the [`WeightFn`]. The set for epoch
+/// `e` is fixed by the last block of epoch `e - 1`, so a node always knows the set for the
+/// height it is working on. If a source returns no usable candidate the current set is kept.
+///
+/// Policies see ordered blocks (batch certificates), not message payloads: payloads are
+/// resolved after ordering. A payload-driven rule (staking messages) must be fed from the
+/// sequenced output and take effect with at least one epoch of delay.
+pub struct EpochStakePolicy<S, W = Linear> {
+    pub epoch_length: u32,
+    pub max_validators: usize,
+    source: S,
+    weight: W,
+    /// Active set per epoch.
+    epochs: BTreeMap<u32, ValidatorSet>,
+}
+
+impl<S: StakeSource, W: WeightFn> EpochStakePolicy<S, W> {
     pub fn new(
         epoch_length: u32,
         max_validators: usize,
-        genesis_candidates: Vec<Candidate>,
-        apply_block: F,
+        genesis: Vec<Candidate>,
+        source: S,
+        weight: W,
     ) -> Self {
         assert!(epoch_length > 0);
-        let candidates = genesis_candidates
-            .into_iter()
-            .map(|c| (c.validator.id_bytes(), c))
-            .collect();
         let mut policy = EpochStakePolicy {
             epoch_length,
             max_validators,
-            candidates,
+            source,
+            weight,
             epochs: BTreeMap::new(),
-            apply_block,
         };
-        let genesis_set = policy.select();
+        let genesis_set = policy
+            .select(genesis)
+            .expect("genesis needs a candidate with positive weight");
         policy.epochs.insert(0, genesis_set);
         policy
     }
@@ -139,32 +173,37 @@ where
         // genesis (height 0) and the first epoch_length blocks after it form epoch 0
         height.saturating_sub(1) / self.epoch_length
     }
-    fn select(&self) -> ValidatorSet {
-        let mut ranked: Vec<&Candidate> =
-            self.candidates.values().filter(|c| c.stake > 0).collect();
+    fn select(&self, candidates: Vec<Candidate>) -> Option<ValidatorSet> {
+        let mut ranked: Vec<Candidate> = candidates.into_iter().filter(|c| c.stake > 0).collect();
         // highest stake first, ties broken by key so the order is deterministic
         ranked.sort_by(|a, b| {
             b.stake
                 .cmp(&a.stake)
                 .then_with(|| a.validator.id_bytes().cmp(&b.validator.id_bytes()))
         });
-        ValidatorSet::new(
-            ranked
-                .into_iter()
-                .take(self.max_validators)
-                .map(|c| Validator {
-                    weight: c.stake,
-                    ..c.validator.clone()
-                })
-                .collect(),
-        )
+        ranked.dedup_by(|a, b| a.validator.id_bytes() == b.validator.id_bytes());
+        ranked.truncate(self.max_validators);
+        let stakes: Vec<u64> = ranked.iter().map(|c| c.stake).collect();
+        let weights = self.weight.weights(&stakes);
+        assert_eq!(
+            weights.len(),
+            stakes.len(),
+            "WeightFn must return one weight per stake"
+        );
+        let validators: Vec<Validator> = ranked
+            .into_iter()
+            .zip(weights)
+            .filter(|(_, w)| *w > 0)
+            .map(|(c, weight)| Validator {
+                weight,
+                ..c.validator
+            })
+            .collect();
+        (!validators.is_empty()).then(|| ValidatorSet::new(validators))
     }
 }
 
-impl<F> ValidatorSetPolicy for EpochStakePolicy<F>
-where
-    F: FnMut(&Block, &mut BTreeMap<GenericPublicKey, Candidate>) + Send + Sync + 'static,
-{
+impl<S: StakeSource, W: WeightFn> ValidatorSetPolicy for EpochStakePolicy<S, W> {
     fn validator_set(&self, height: u32) -> ValidatorSet {
         let epoch = self.epoch_of(height);
         self.epochs
@@ -174,12 +213,13 @@ where
             .expect("epoch 0 always exists")
     }
     fn on_block_committed(&mut self, block: &Block) {
-        (self.apply_block)(block, &mut self.candidates);
+        self.source.on_block_committed(block);
         // the last block of an epoch fixes the set of the next epoch
         if block.height > 0 && block.height.is_multiple_of(self.epoch_length) {
-            let next_epoch = block.height / self.epoch_length;
-            let set = self.select();
-            self.epochs.insert(next_epoch, set);
+            let candidates = self.source.stakes(block);
+            if let Some(set) = self.select(candidates) {
+                self.epochs.insert(block.height / self.epoch_length, set);
+            }
         }
     }
 }
@@ -209,46 +249,53 @@ mod tests {
         assert!(weighted.is_quorum(50 + 30));
     }
 
+    /// Test source: a stake table where proposing a block earns 500 stake.
+    struct RewardSource(BTreeMap<GenericPublicKey, Candidate>);
+    impl StakeSource for RewardSource {
+        fn on_block_committed(&mut self, block: &Block) {
+            if let Some(c) = self.0.get_mut(&block.proposer) {
+                c.stake += 500;
+            }
+        }
+        fn stakes(&mut self, _epoch_end: &Block) -> Vec<Candidate> {
+            self.0.values().cloned().collect()
+        }
+    }
+
+    fn candidate(validator: &Validator, stake: u64) -> Candidate {
+        Candidate {
+            validator: validator.clone(),
+            stake,
+        }
+    }
+
+    fn block(height: u32, proposer: &GenericPublicKey) -> Block {
+        let mut b = Block::genesis(0);
+        b.height = height;
+        b.proposer = proposer.clone();
+        b
+    }
+
+    fn ids(set: ValidatorSet) -> Vec<GenericPublicKey> {
+        set.iter().map(|v| v.id_bytes()).collect()
+    }
+
     #[test]
     fn epoch_stake_policy_rotates_at_epoch_boundaries() {
         let (a, b, c) = (validator(1), validator(1), validator(1));
         let c_id = c.id_bytes();
-        // reward rule: proposing a block earns 500 stake
-        let apply = |block: &Block, table: &mut BTreeMap<GenericPublicKey, Candidate>| {
-            if let Some(cand) = table.get_mut(&block.proposer) {
-                cand.stake += 500;
-            }
-        };
-        let mut policy = EpochStakePolicy::new(
-            3,
-            2,
-            vec![
-                Candidate {
-                    validator: a.clone(),
-                    stake: 100,
-                },
-                Candidate {
-                    validator: b.clone(),
-                    stake: 90,
-                },
-                Candidate {
-                    validator: c.clone(),
-                    stake: 10,
-                },
-            ],
-            apply,
+        let genesis = vec![candidate(&a, 100), candidate(&b, 90), candidate(&c, 10)];
+        let source = RewardSource(
+            genesis
+                .iter()
+                .map(|c| (c.validator.id_bytes(), c.clone()))
+                .collect(),
         );
-        let ids = |s: ValidatorSet| s.iter().map(|v| v.id_bytes()).collect::<Vec<_>>();
+        let mut policy = EpochStakePolicy::new(3, 2, genesis, source, Linear);
         assert_eq!(
             ids(policy.validator_set(1)),
             vec![a.id_bytes(), b.id_bytes()]
         );
-        let block = |height: u32, proposer: &GenericPublicKey| {
-            let mut b = Block::genesis(0);
-            b.height = height;
-            b.proposer = proposer.clone();
-            b
-        };
         // c proposes during epoch 0 (heights 1..=3)
         policy.on_block_committed(&block(1, &a.id_bytes()));
         policy.on_block_committed(&block(2, &c_id));
@@ -266,5 +313,26 @@ mod tests {
             ids(policy.validator_set(3)),
             vec![a.id_bytes(), b.id_bytes()]
         );
+    }
+
+    #[test]
+    fn weight_fn_maps_stake_to_voting_weight() {
+        let (a, b) = (validator(1), validator(1));
+        let genesis = vec![candidate(&a, 10_000), candidate(&b, 100)];
+        let source = RewardSource(BTreeMap::new());
+        let policy = EpochStakePolicy::new(10, 10, genesis, source, SquareRoot);
+        let set = policy.validator_set(1);
+        assert_eq!(set.get(&a.id_bytes()).unwrap().weight, 100);
+        assert_eq!(set.get(&b.id_bytes()).unwrap().weight, 10);
+    }
+
+    #[test]
+    fn empty_stake_snapshot_keeps_the_current_set() {
+        let a = validator(1);
+        let source = RewardSource(BTreeMap::new());
+        let mut policy = EpochStakePolicy::new(2, 4, vec![candidate(&a, 5)], source, Linear);
+        policy.on_block_committed(&block(1, &vec![]));
+        policy.on_block_committed(&block(2, &vec![]));
+        assert_eq!(ids(policy.validator_set(3)), vec![a.id_bytes()]);
     }
 }

@@ -69,8 +69,8 @@ Every step checks that honest nodes never commit conflicting blocks, and the run
 `SIM_SEEDS=200 cargo test --release --test simulation` runs more seeds.
 
 **Validator sets.** Validator sets come from a `ValidatorSetPolicy` (`consensus/src/validators.rs`). The default is `FixedValidatorSet`.
-`EpochStakePolicy` is a reference proof-of-stake policy that rotates the top-N staked candidates at epoch boundaries.
-Implement the trait for any other rule set.
+`EpochStakePolicy` is a proof-of-stake policy that rotates the top-N staked candidates at epoch boundaries. It takes a `StakeSource` (where stake comes from, e.g. an L1 staking contract read at a finalized block the chain references) and a `WeightFn` (how stake becomes voting weight: `Linear`, `SquareRoot`, or your own, e.g. a cap on any one validator's share).
+Validators never claim a stake: every node computes the set itself from the chain, so votes and proposals are weighed by its own view. Implement `ValidatorSetPolicy` directly for any other rule set.
 
 # Data availability
 
