@@ -1,0 +1,19 @@
+[package]
+name = "diseq-consensus"
+version = "0.2.0"
+edition = "2021"
+description = "DISEQ consensus: a deterministic, I/O-free Tendermint state machine that orders certified message batches"
+
+[dependencies]
+anyhow.workspace = true
+bincode.workspace = true
+hex.workspace = true
+serde.workspace = true
+sha2.workspace = true
+k256.workspace = true
+schnorrkel = "0.11.5"
+libm = "0.2.16"
+rand_core = "0.6.4"
+
+[dev-dependencies]
+rand.workspace = true

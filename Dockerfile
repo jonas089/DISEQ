@@ -1,31 +1,21 @@
-# Use amd64 Ubuntu base
-FROM --platform=linux/amd64 ubuntu:22.04
-
-# Set working directory
-WORKDIR /usr/src/app
-
-# Update and install dependencies
-RUN apt-get update && apt-get install -y \
-    curl build-essential \
-    libssl-dev pkg-config gcc g++ libsqlite3-dev
-
-# Install Rust explicitly for x86_64
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.81 --default-host x86_64-unknown-linux-gnu
-
-# Ensure Rust binaries are available in PATH
-ENV PATH="/root/.cargo/bin:$PATH"
-
-# Manually source Rust environment and verify installation
-RUN /bin/bash -c "source $HOME/.cargo/env && rustup show && rustc --version"
-
+# Builds for the host architecture (no emulation on Apple Silicon).
+FROM rust:1-bookworm AS builder
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends clang libclang-dev \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /usr/src/app
 COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/src/app/target \
+    cargo build --release --bin l2-sequencer \
+    && cp target/release/l2-sequencer /usr/local/bin/l2-sequencer
 
-# Build the Rust project for x86_64
-RUN /bin/bash -c "source $HOME/.cargo/env && cargo build --release --target x86_64-unknown-linux-gnu"
-
-# Ensure correct permissions
-RUN mkdir -p /var/data/ && chmod -R 777 /var/data/
-
-# Run the built Rust application
-CMD ["./target/x86_64-unknown-linux-gnu/release/l2-sequencer"]
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/data
+COPY --from=builder /usr/local/bin/l2-sequencer /usr/local/bin/l2-sequencer
+COPY resources /resources
+WORKDIR /
+CMD ["l2-sequencer"]

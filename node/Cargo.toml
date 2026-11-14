@@ -1,0 +1,30 @@
+[package]
+name = "diseq-node"
+version = "0.2.0"
+edition = "2021"
+description = "DISEQ node: storage, batch dissemination, networking and APIs around diseq-consensus"
+
+[[bin]]
+name = "l2-sequencer"
+path = "src/main.rs"
+
+[dependencies]
+diseq-consensus = { path = "../consensus" }
+anyhow.workspace = true
+bincode.workspace = true
+hex.workspace = true
+serde.workspace = true
+sha2.workspace = true
+k256.workspace = true
+ciphercurve-trie = { git = "https://github.com/jonas089/ciphercurve-trie", rev = "9615934" }
+rocksdb = { version = "0.22", default-features = false, features = ["lz4"] }
+tokio = { version = "1.38", features = ["full"] }
+axum = "0.7.5"
+reqwest = { version = "0.12.5", default-features = false, features = ["json"] }
+bytes = "1"
+serde_json = "1.0"
+colored = "2.1.0"
+viuer = "0.6"
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -2,13 +2,23 @@ services:
   rust-node-1:
     container_name: rust-node-1
     build: .
+    image: diseq-node
     restart: always
     user: "root:root"
-    platform: linux/amd64
     environment:
-      - PATH_TO_DB=/var/data/node-1.sqlite
+      - PATH_TO_DB=/var/data/node-1
       - API_HOST_WITH_PORT=0.0.0.0:8080
       - LOCAL_VALIDATOR=0
+      - PROPOSE_TIMEOUT_MS=${PROPOSE_TIMEOUT_MS:-1000}
+      - PREVOTE_TIMEOUT_MS=${PREVOTE_TIMEOUT_MS:-1000}
+      - PRECOMMIT_TIMEOUT_MS=${PRECOMMIT_TIMEOUT_MS:-1000}
+      - TIMEOUT_DELTA_MS=${TIMEOUT_DELTA_MS:-500}
+      - REBROADCAST_INTERVAL_MS=${REBROADCAST_INTERVAL_MS:-2000}
+      - TICK_INTERVAL_MS=${TICK_INTERVAL_MS:-10}
+      - MAX_BLOCK_MESSAGES=${MAX_BLOCK_MESSAGES:-1000000}
+      - MAX_PENDING_MESSAGES=${MAX_PENDING_MESSAGES:-200000}
+      - MAX_BATCH_MESSAGES=${MAX_BATCH_MESSAGES:-4096}
+      - BATCH_INTERVAL_MS=${BATCH_INTERVAL_MS:-20}
     networks:
       - rust-net
     ports:
@@ -17,12 +27,23 @@ services:
   rust-node-2:
     container_name: rust-node-2
     build: .
+    image: diseq-node
     restart: always
     user: "root:root"
     environment:
-      - PATH_TO_DB=/var/data/node-2.sqlite
+      - PATH_TO_DB=/var/data/node-2
       - API_HOST_WITH_PORT=0.0.0.0:8081
       - LOCAL_VALIDATOR=1
+      - PROPOSE_TIMEOUT_MS=${PROPOSE_TIMEOUT_MS:-1000}
+      - PREVOTE_TIMEOUT_MS=${PREVOTE_TIMEOUT_MS:-1000}
+      - PRECOMMIT_TIMEOUT_MS=${PRECOMMIT_TIMEOUT_MS:-1000}
+      - TIMEOUT_DELTA_MS=${TIMEOUT_DELTA_MS:-500}
+      - REBROADCAST_INTERVAL_MS=${REBROADCAST_INTERVAL_MS:-2000}
+      - TICK_INTERVAL_MS=${TICK_INTERVAL_MS:-10}
+      - MAX_BLOCK_MESSAGES=${MAX_BLOCK_MESSAGES:-1000000}
+      - MAX_PENDING_MESSAGES=${MAX_PENDING_MESSAGES:-200000}
+      - MAX_BATCH_MESSAGES=${MAX_BATCH_MESSAGES:-4096}
+      - BATCH_INTERVAL_MS=${BATCH_INTERVAL_MS:-20}
     networks:
       - rust-net
     ports:
@@ -31,12 +52,23 @@ services:
   rust-node-3:
     container_name: rust-node-3
     build: .
+    image: diseq-node
     restart: always
     user: "root:root"
     environment:
-      - PATH_TO_DB=/var/data/node-3.sqlite
+      - PATH_TO_DB=/var/data/node-3
       - API_HOST_WITH_PORT=0.0.0.0:8082
       - LOCAL_VALIDATOR=2
+      - PROPOSE_TIMEOUT_MS=${PROPOSE_TIMEOUT_MS:-1000}
+      - PREVOTE_TIMEOUT_MS=${PREVOTE_TIMEOUT_MS:-1000}
+      - PRECOMMIT_TIMEOUT_MS=${PRECOMMIT_TIMEOUT_MS:-1000}
+      - TIMEOUT_DELTA_MS=${TIMEOUT_DELTA_MS:-500}
+      - REBROADCAST_INTERVAL_MS=${REBROADCAST_INTERVAL_MS:-2000}
+      - TICK_INTERVAL_MS=${TICK_INTERVAL_MS:-10}
+      - MAX_BLOCK_MESSAGES=${MAX_BLOCK_MESSAGES:-1000000}
+      - MAX_PENDING_MESSAGES=${MAX_PENDING_MESSAGES:-200000}
+      - MAX_BATCH_MESSAGES=${MAX_BATCH_MESSAGES:-4096}
+      - BATCH_INTERVAL_MS=${BATCH_INTERVAL_MS:-20}
     networks:
       - rust-net
     ports:
@@ -45,12 +77,23 @@ services:
   rust-node-4:
     container_name: rust-node-4
     build: .
+    image: diseq-node
     restart: always
     user: "root:root"
     environment:
-      - PATH_TO_DB=/var/data/node-4.sqlite
+      - PATH_TO_DB=/var/data/node-4
       - API_HOST_WITH_PORT=0.0.0.0:8083
       - LOCAL_VALIDATOR=3
+      - PROPOSE_TIMEOUT_MS=${PROPOSE_TIMEOUT_MS:-1000}
+      - PREVOTE_TIMEOUT_MS=${PREVOTE_TIMEOUT_MS:-1000}
+      - PRECOMMIT_TIMEOUT_MS=${PRECOMMIT_TIMEOUT_MS:-1000}
+      - TIMEOUT_DELTA_MS=${TIMEOUT_DELTA_MS:-500}
+      - REBROADCAST_INTERVAL_MS=${REBROADCAST_INTERVAL_MS:-2000}
+      - TICK_INTERVAL_MS=${TICK_INTERVAL_MS:-10}
+      - MAX_BLOCK_MESSAGES=${MAX_BLOCK_MESSAGES:-1000000}
+      - MAX_PENDING_MESSAGES=${MAX_PENDING_MESSAGES:-200000}
+      - MAX_BATCH_MESSAGES=${MAX_BATCH_MESSAGES:-4096}
+      - BATCH_INTERVAL_MS=${BATCH_INTERVAL_MS:-20}
     networks:
       - rust-net
     ports:
